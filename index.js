@@ -47,6 +47,40 @@ const userSessions = new Map();
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://lineat-bot.onrender.com';
 const previewNodes = JSON.stringify(storyMap);
 const previewStartId = JSON.stringify(storyStartId);
+const previewRoleIcons = JSON.stringify({
+  bear: '/public/story/01/roles/bear.png',
+  'inner-bear': '/public/story/01/roles/inner-bear.png',
+  narrator: '/public/story/01/roles/narrator.png',
+  lily: '/public/story/01/roles/lily.png',
+  dad: '/public/story/01/roles/dad.png',
+  mom: '/public/story/01/roles/mom.png',
+  dream: '/public/story/01/roles/dream.png',
+  friends: '/public/story/01/roles/friends.png',
+  villager: '/public/story/01/roles/villager.png',
+  beaver: '/public/story/01/roles/beaver.png',
+  deer: '/public/story/01/roles/deer.png',
+  owl: '/public/story/01/roles/owl.png',
+  bee: '/public/story/01/roles/bee.png',
+  journey: '/public/story/01/roles/journey.png',
+  cave: '/public/story/01/roles/cave.png'
+});
+const previewRoleThemes = JSON.stringify({
+  bear: { border: '#D9B08C', chip: '#8B6A4E', button: '#F3BD63' },
+  'inner-bear': { border: '#B7A1D6', chip: '#6E5A8A', button: '#C7B2EA' },
+  narrator: { border: '#A8B3BC', chip: '#56616A', button: '#B8C4CC' },
+  lily: { border: '#F1B9C7', chip: '#B9687B', button: '#F5C9D4' },
+  dad: { border: '#B9D49E', chip: '#5D7A3F', button: '#CFE5B7' },
+  mom: { border: '#F0A7A7', chip: '#A95555', button: '#F6C2C2' },
+  dream: { border: '#F5D37B', chip: '#9A7A1F', button: '#F6E39C' },
+  friends: { border: '#9ED7E4', chip: '#3D7D8D', button: '#BCE7F0' },
+  villager: { border: '#D9C089', chip: '#8A6E2A', button: '#E9D7AE' },
+  beaver: { border: '#D8AB84', chip: '#8D5A3B', button: '#E9C5A6' },
+  deer: { border: '#DCCD8D', chip: '#81722B', button: '#ECE0AC' },
+  owl: { border: '#B99A7D', chip: '#6C543D', button: '#D7BCA6' },
+  bee: { border: '#F5C74D', chip: '#9D7A00', button: '#F8DD8B' },
+  journey: { border: '#B8C8A0', chip: '#5C7240', button: '#D0DCBE' },
+  cave: { border: '#B8C1E4', chip: '#58638F', button: '#D1D8F2' }
+});
 const previewHtml = `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -124,8 +158,7 @@ const previewHtml = `<!DOCTYPE html>
       border-bottom-left-radius: 6px;
     }
     .controls {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      display: flex;
       gap: 10px;
       margin-top: 14px;
     }
@@ -133,16 +166,23 @@ const previewHtml = `<!DOCTYPE html>
       display: block;
     }
     .carousel-track {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      display: flex;
+      overflow-x: auto;
+      scroll-snap-type: x mandatory;
+      -webkit-overflow-scrolling: touch;
       gap: 10px;
       width: 100%;
+      padding-bottom: 6px;
     }
     .card {
+      flex: 0 0 78%;
+      scroll-snap-align: start;
       background: white;
-      border-radius: 18px;
+      border-radius: 24px;
       overflow: hidden;
       box-shadow: 0 10px 22px rgba(45, 36, 27, 0.08);
+      position: relative;
+      border: 10px solid #d9b08c;
     }
     .card img {
       width: 100%;
@@ -152,31 +192,83 @@ const previewHtml = `<!DOCTYPE html>
       background: #eee4d8;
     }
     .card-body {
-      padding: 12px;
+      padding: 14px 14px 16px;
     }
     .card-title {
-      font-size: 15px;
-      font-weight: 700;
-      margin-bottom: 6px;
-    }
-    .card-copy {
+      display: inline-block;
       font-size: 14px;
-      line-height: 1.45;
-      white-space: pre-wrap;
-    }
-    button {
-      border: 0;
-      border-radius: 16px;
-      padding: 14px 12px;
-      font-size: 16px;
       font-weight: 700;
-      cursor: pointer;
+      margin-bottom: 10px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: #8b6a4e;
       color: white;
     }
-    button[data-action="開始故事"] { background: var(--accent); }
-    button[data-action="下一頁"] { background: var(--accent-2); }
-    button[data-action="上一頁"] { background: var(--accent-3); }
-    button[data-action="重來"] { background: var(--accent-4); }
+    .card-copy {
+      font-size: 15px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      min-height: 84px;
+      padding-right: 66px;
+    }
+    .role-badge {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      width: 56px;
+      height: 56px;
+      object-fit: contain;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.92);
+      box-shadow: 0 8px 18px rgba(45, 36, 27, 0.15);
+    }
+    .choice-card {
+      width: 100%;
+      border-radius: 24px;
+      overflow: hidden;
+      background: white;
+      box-shadow: 0 10px 22px rgba(45, 36, 27, 0.08);
+      border: 10px solid #d9b08c;
+    }
+    .choice-card img {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      display: block;
+      background: #eee4d8;
+    }
+    .choice-body {
+      padding: 16px;
+    }
+    .choice-title {
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 1.5;
+      margin-bottom: 12px;
+    }
+    .choice-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .choice-btn {
+      width: 100%;
+      border: 0;
+      border-radius: 18px;
+      padding: 14px 16px;
+      font-size: 15px;
+      line-height: 1.45;
+      font-weight: 700;
+      color: #2d241b;
+      background: #f3bd63;
+      text-align: left;
+      cursor: pointer;
+    }
+    .utility {
+      flex: 1;
+      background: #2d241b;
+      color: white;
+    }
   </style>
 </head>
 <body>
@@ -185,17 +277,38 @@ const previewHtml = `<!DOCTYPE html>
     <div class="subtitle">本機模擬 LINE 對話流程，先看故事翻頁效果。</div>
     <section class="chat" id="chat"></section>
     <section class="controls">
-      <button data-slot="0">開始故事</button>
-      <button data-slot="1">重來</button>
-      <button data-slot="2">目錄</button>
-      <button data-slot="3">重來</button>
+      <button class="choice-btn utility" data-utility="start">開始故事</button>
+      <button class="choice-btn utility" data-utility="restart">重來</button>
     </section>
   </main>
   <script>
     const storyMap = ${previewNodes};
     const storyStartId = ${previewStartId};
+    const roleIcons = ${previewRoleIcons};
+    const roleThemes = ${previewRoleThemes};
     let currentNodeId = storyStartId;
     const chat = document.getElementById('chat');
+
+    function getRoleKey(title) {
+      if (title.includes('熊熊的內心')) return 'inner-bear';
+      if (title.includes('熊熊')) return 'bear';
+      if (title.includes('旁白') || title.includes('早餐') || title.includes('夢境')) return title.includes('夢境') ? 'dream' : 'narrator';
+      if (title.includes('莉莉')) return 'lily';
+      if (title.includes('熊爸爸')) return 'dad';
+      if (title.includes('熊媽媽')) return 'mom';
+      if (title.includes('好友')) return 'friends';
+      if (title.includes('村民')) return 'villager';
+      if (title.includes('河狸')) return 'beaver';
+      if (title.includes('鹿')) return 'deer';
+      if (title.includes('貓頭鷹')) return 'owl';
+      if (title.includes('蜜蜂')) return 'bee';
+      if (title.includes('洞穴')) return 'cave';
+      if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) return 'journey';
+      return 'narrator';
+    }
+    function getRoleTheme(title) {
+      return roleThemes[getRoleKey(title)] || roleThemes.narrator;
+    }
 
     function addBubble(role, text) {
       const row = document.createElement('div');
@@ -215,14 +328,18 @@ const previewHtml = `<!DOCTYPE html>
       track.className = 'carousel-track';
 
       cards.forEach((card) => {
+        const roleIcon = roleIcons[getRoleKey(card.title)] || roleIcons.narrator;
+        const theme = getRoleTheme(card.title);
         const item = document.createElement('div');
         item.className = 'card';
+        item.style.borderColor = theme.border;
         item.innerHTML = \`
           <img src="/\${card.image}" alt="\${card.title}">
           <div class="card-body">
-            <div class="card-title">\${card.title}</div>
+            <div class="card-title" style="background:\${theme.chip}">\${card.title}</div>
             <div class="card-copy">\${card.body}</div>
           </div>
+          <img class="role-badge" src="\${roleIcon}" alt="\${card.title}">
         \`;
         track.appendChild(item);
       });
@@ -230,6 +347,31 @@ const previewHtml = `<!DOCTYPE html>
       row.appendChild(track);
       chat.appendChild(row);
       chat.scrollTop = chat.scrollHeight;
+    }
+
+    function addChoiceCard(choice) {
+      const row = document.createElement('div');
+      row.className = 'row carousel';
+      const theme = getRoleTheme(choice.prompt);
+      const card = document.createElement('div');
+      card.className = 'choice-card';
+      card.style.borderColor = theme.border;
+      card.innerHTML = \`
+        <img src="/\${choice.image}" alt="choice">
+        <div class="choice-body">
+          <div class="choice-title">\${choice.prompt}</div>
+          <div class="choice-buttons">
+            <button class="choice-btn" data-inline-action="\${choice.correct}" style="background:\${theme.button}">\${choice.correct}</button>
+            <button class="choice-btn" data-inline-action="\${choice.wrong}" style="background:#d8e0ef">\${choice.wrong}</button>
+          </div>
+        </div>
+      \`;
+      row.appendChild(card);
+      chat.appendChild(row);
+      chat.scrollTop = chat.scrollHeight;
+      card.querySelectorAll('[data-inline-action]').forEach((button) => {
+        button.addEventListener('click', () => reply(button.dataset.inlineAction));
+      });
     }
 
     function renderNode(nodeId, leadText = '') {
@@ -247,26 +389,17 @@ const previewHtml = `<!DOCTYPE html>
       });
 
       if (node.choice) {
-        addBubble('bot', node.choice.prompt);
-        updateButtons(node.choice.correct, node.choice.wrong);
+        addChoiceCard(node.choice);
       } else if (node.continue) {
-        updateButtons(node.continue.label, '重來');
+        addChoiceCard({
+          prompt: '看完這一幕後，繼續往下走吧。',
+          image: node.blocks.find((block) => block.type === 'gallery')?.cards?.[0]?.image || 'public/story/01/image01.png',
+          correct: node.continue.label,
+          wrong: '重來'
+        });
       } else if (node.endingText) {
         addBubble('bot', node.endingText);
-        updateButtons('開始故事', '重來');
       }
-    }
-
-    function updateButtons(primary, secondary) {
-      const buttons = document.querySelectorAll('button[data-slot]');
-      buttons[0].textContent = primary;
-      buttons[0].dataset.action = primary;
-      buttons[1].textContent = secondary;
-      buttons[1].dataset.action = secondary;
-      buttons[2].textContent = '目錄';
-      buttons[2].dataset.action = '目錄';
-      buttons[3].textContent = '重來';
-      buttons[3].dataset.action = '重來';
     }
 
     function reply(message) {
@@ -312,10 +445,8 @@ const previewHtml = `<!DOCTYPE html>
     }
 
     addBubble('bot', '歡迎來到《熊熊尋心》預覽。先按「開始故事」即可在本機模擬互動流程。');
-    updateButtons('開始故事', '重來');
-
-    document.querySelectorAll('button[data-slot]').forEach((button) => {
-      button.addEventListener('click', () => reply(button.dataset.action));
+    document.querySelectorAll('[data-utility]').forEach((button) => {
+      button.addEventListener('click', () => reply(button.dataset.utility === 'start' ? '開始故事' : '重來'));
     });
   </script>
 </body>
@@ -428,6 +559,7 @@ function replyWithNode(replyToken, nodeId, leadText) {
 }
 
 function createChoiceFlex(choice) {
+  const theme = getRoleThemeInfo(choice.prompt);
   return {
     type: 'flex',
     altText: '互動繪本選項',
@@ -445,18 +577,20 @@ function createChoiceFlex(choice) {
         type: 'box',
         layout: 'vertical',
         spacing: 'md',
+        backgroundColor: '#FFFDF8',
         contents: [
           {
             type: 'text',
             text: choice.prompt,
             weight: 'bold',
             size: 'lg',
-            wrap: true
+            wrap: true,
+            color: '#2D241B'
           },
           {
             type: 'button',
             style: 'primary',
-            color: '#F3BD63',
+            color: theme.button,
             action: {
               type: 'message',
               label: choice.correct,
@@ -466,7 +600,7 @@ function createChoiceFlex(choice) {
           {
             type: 'button',
             style: 'primary',
-            color: '#7FA8D1',
+            color: '#D8E0EF',
             action: {
               type: 'message',
               label: choice.wrong,
@@ -474,6 +608,11 @@ function createChoiceFlex(choice) {
             }
           }
         ]
+      },
+      styles: {
+        body: {
+          backgroundColor: '#FFFDF8'
+        }
       }
     }
   };
@@ -504,41 +643,14 @@ function createStoryCarousel(cards) {
     altText: '故事多頁訊息',
     contents: {
       type: 'carousel',
-      contents: cards.map((card) => ({
-        type: 'bubble',
-        hero: {
-          type: 'image',
-          url: `${publicBaseUrl}/${card.image}`,
-          size: 'full',
-          aspectRatio: '1:1',
-          aspectMode: 'cover'
-        },
-        body: {
-          type: 'box',
-          layout: 'vertical',
-          spacing: 'md',
-          contents: [
-            {
-              type: 'text',
-              text: card.title,
-              weight: 'bold',
-              size: 'lg',
-              wrap: true
-            },
-            ...(card.body ? [{
-              type: 'text',
-              text: card.body,
-              wrap: true,
-              size: 'md'
-            }] : [])
-          ]
-        }
-      }))
+      contents: cards.map((card) => createStoryBubble(card).contents)
     }
   };
 }
 
 function createStoryBubble(card) {
+  const roleIconUrl = `${publicBaseUrl}${getRoleIconPath(card.title)}`;
+  const theme = getRoleThemeInfo(card.title);
   return {
     type: 'flex',
     altText: card.title,
@@ -555,24 +667,96 @@ function createStoryBubble(card) {
         type: 'box',
         layout: 'vertical',
         spacing: 'md',
+        paddingAll: '14px',
         contents: [
           {
-            type: 'text',
-            text: card.title,
-            weight: 'bold',
-            size: 'lg',
-            wrap: true
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: theme.border,
+            cornerRadius: '999px',
+            paddingStart: '12px',
+            paddingEnd: '12px',
+            paddingTop: '6px',
+            paddingBottom: '6px',
+            contents: [
+              {
+                type: 'text',
+                text: card.title,
+                weight: 'bold',
+                size: 'sm',
+                wrap: true,
+                color: '#FFFFFF'
+              }
+            ]
           },
           ...(card.body ? [{
             type: 'text',
             text: card.body,
             wrap: true,
-            size: 'md'
-          }] : [])
-        ]
+            size: 'md',
+            color: '#2D241B'
+          }] : []),
+          {
+            type: 'box',
+            layout: 'horizontal',
+            justifyContent: 'end',
+            margin: 'md',
+            contents: [
+              {
+                type: 'image',
+                url: roleIconUrl,
+                size: '48px',
+                aspectMode: 'cover',
+                aspectRatio: '1:1'
+              }
+            ]
+          }
+        ],
+        borderColor: theme.border,
+        borderWidth: '4px',
+        cornerRadius: '20px',
+        backgroundColor: '#FFFDF8'
       }
     }
   };
+}
+
+function getRoleIconPath(title) {
+  if (title.includes('熊熊的內心')) return '/public/story/01/roles/inner-bear.png';
+  if (title.includes('熊熊')) return '/public/story/01/roles/bear.png';
+  if (title.includes('旁白') || title.includes('早餐')) return '/public/story/01/roles/narrator.png';
+  if (title.includes('夢境')) return '/public/story/01/roles/dream.png';
+  if (title.includes('莉莉')) return '/public/story/01/roles/lily.png';
+  if (title.includes('熊爸爸')) return '/public/story/01/roles/dad.png';
+  if (title.includes('熊媽媽')) return '/public/story/01/roles/mom.png';
+  if (title.includes('好友')) return '/public/story/01/roles/friends.png';
+  if (title.includes('村民')) return '/public/story/01/roles/villager.png';
+  if (title.includes('河狸')) return '/public/story/01/roles/beaver.png';
+  if (title.includes('鹿')) return '/public/story/01/roles/deer.png';
+  if (title.includes('貓頭鷹')) return '/public/story/01/roles/owl.png';
+  if (title.includes('蜜蜂')) return '/public/story/01/roles/bee.png';
+  if (title.includes('洞穴')) return '/public/story/01/roles/cave.png';
+  if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) return '/public/story/01/roles/journey.png';
+  return '/public/story/01/roles/narrator.png';
+}
+
+function getRoleThemeInfo(title) {
+  if (title.includes('熊熊的內心')) return { border: '#8B6FB7', button: '#C7B2EA' };
+  if (title.includes('熊熊')) return { border: '#8B6A4E', button: '#F3BD63' };
+  if (title.includes('旁白') || title.includes('早餐')) return { border: '#56616A', button: '#B8C4CC' };
+  if (title.includes('夢境')) return { border: '#9A7A1F', button: '#F6E39C' };
+  if (title.includes('莉莉')) return { border: '#B9687B', button: '#F5C9D4' };
+  if (title.includes('熊爸爸')) return { border: '#5D7A3F', button: '#CFE5B7' };
+  if (title.includes('熊媽媽')) return { border: '#A95555', button: '#F6C2C2' };
+  if (title.includes('好友')) return { border: '#3D7D8D', button: '#BCE7F0' };
+  if (title.includes('村民')) return { border: '#8A6E2A', button: '#E9D7AE' };
+  if (title.includes('河狸')) return { border: '#8D5A3B', button: '#E9C5A6' };
+  if (title.includes('鹿')) return { border: '#81722B', button: '#ECE0AC' };
+  if (title.includes('貓頭鷹')) return { border: '#6C543D', button: '#D7BCA6' };
+  if (title.includes('蜜蜂')) return { border: '#9D7A00', button: '#F8DD8B' };
+  if (title.includes('洞穴')) return { border: '#58638F', button: '#D1D8F2' };
+  if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) return { border: '#5C7240', button: '#D0DCBE' };
+  return { border: '#56616A', button: '#B8C4CC' };
 }
 
 app.listen(port, () => {
