@@ -577,15 +577,23 @@ function createChoiceFlex(choice) {
         type: 'box',
         layout: 'vertical',
         spacing: 'md',
-        backgroundColor: '#FFFDF8',
         contents: [
           {
-            type: 'text',
-            text: choice.prompt,
-            weight: 'bold',
-            size: 'lg',
-            wrap: true,
-            color: '#2D241B'
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: theme.border,
+            cornerRadius: '12px',
+            paddingAll: '10px',
+            contents: [
+              {
+                type: 'text',
+                text: choice.prompt,
+                weight: 'bold',
+                size: 'md',
+                wrap: true,
+                color: '#FFFFFF'
+              }
+            ]
           },
           {
             type: 'button',
@@ -608,11 +616,6 @@ function createChoiceFlex(choice) {
             }
           }
         ]
-      },
-      styles: {
-        body: {
-          backgroundColor: '#FFFDF8'
-        }
       }
     }
   };
@@ -667,17 +670,13 @@ function createStoryBubble(card) {
         type: 'box',
         layout: 'vertical',
         spacing: 'md',
-        paddingAll: '14px',
         contents: [
           {
             type: 'box',
             layout: 'vertical',
             backgroundColor: theme.border,
-            cornerRadius: '999px',
-            paddingStart: '12px',
-            paddingEnd: '12px',
-            paddingTop: '6px',
-            paddingBottom: '6px',
+            cornerRadius: '12px',
+            paddingAll: '8px',
             contents: [
               {
                 type: 'text',
@@ -705,17 +704,13 @@ function createStoryBubble(card) {
               {
                 type: 'image',
                 url: roleIconUrl,
-                size: '48px',
+                size: 'sm',
                 aspectMode: 'cover',
                 aspectRatio: '1:1'
               }
             ]
           }
-        ],
-        borderColor: theme.border,
-        borderWidth: '4px',
-        cornerRadius: '20px',
-        backgroundColor: '#FFFDF8'
+        ]
       }
     }
   };
