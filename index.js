@@ -698,9 +698,11 @@ function createStoryBubble(card) {
           {
             type: 'box',
             layout: 'horizontal',
-            justifyContent: 'end',
             margin: 'md',
             contents: [
+              {
+                type: 'filler'
+              },
               {
                 type: 'image',
                 url: roleIconUrl,
