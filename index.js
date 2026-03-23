@@ -593,7 +593,7 @@ function createChoiceFlex(choice) {
             color: theme.button,
             action: {
               type: 'message',
-              label: choice.correct,
+              label: toLineLabel(choice.correct),
               text: choice.correct
             }
           },
@@ -603,7 +603,7 @@ function createChoiceFlex(choice) {
             color: '#D8E0EF',
             action: {
               type: 'message',
-              label: choice.wrong,
+              label: toLineLabel(choice.wrong),
               text: choice.wrong
             }
           }
@@ -628,7 +628,7 @@ function createContinuePrompt(label) {
           type: 'action',
           action: {
             type: 'message',
-            label,
+            label: toLineLabel(label),
             text: label
           }
         }
@@ -757,6 +757,17 @@ function getRoleThemeInfo(title) {
   if (title.includes('洞穴')) return { border: '#58638F', button: '#D1D8F2' };
   if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) return { border: '#5C7240', button: '#D0DCBE' };
   return { border: '#56616A', button: '#B8C4CC' };
+}
+
+function toLineLabel(text) {
+  const compact = text
+    .replace(/^熊熊(難過地想|嘆了一口氣|總覺得哪裡不對勁，決定)?[:：]?/, '')
+    .replace(/^看到流星的你，會想到什麼？/, '流星心願')
+    .replace(/^對於未知的冒險感到焦慮與擔心嗎？/, '未知冒險')
+    .trim();
+
+  if (compact.length <= 20) return compact;
+  return `${compact.slice(0, 19)}…`;
 }
 
 app.listen(port, () => {
