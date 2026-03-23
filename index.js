@@ -3,6 +3,7 @@ require('dotenv').config();
 const express = require('express');
 const line = require('@line/bot-sdk');
 const path = require('path');
+const { storyMap, storyStartId } = require('./storyData');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -23,6 +24,7 @@ app.use((req, res, next) => {
 });
 
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 app.get('/webhook', (req, res) => {
   res.status(200).send('webhook endpoint is alive');
@@ -43,26 +45,8 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 const client = new line.Client(config);
 const userSessions = new Map();
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://lineat-bot.onrender.com';
-
-const storyPages = [
-  '封面：\n《小星星找晚安》\n輸入「開始故事」進入第一頁。',
-  '第 1 頁：\n小星星住在藍藍的夜空上。\n今天，它想找到一個最溫柔的晚安。',
-  '第 2 頁：\n它先飛去問月亮。\n月亮笑著說：「晚安是慢慢發亮的心。」',
-  '第 3 頁：\n它又飛去問小雲。\n小雲輕輕飄著說：「晚安是安心地閉上眼睛。」',
-  '第 4 頁：\n最後，小星星回到自己的位置。\n它發現，原來晚安就在每一次平靜呼吸裡。',
-  '結尾：\n小星星閉上眼睛，整片天空都變得柔柔亮亮的。\n故事說完了。輸入「重來」可以再看一次。'
-];
-
-const storyNodes = {
-  start: {
-    next: {
-      '選擇：翻越巨石': 'brave-path',
-      '選擇：繞去安全小路': 'careful-path'
-    }
-  },
-  'brave-path': {},
-  'careful-path': {}
-};
+const previewNodes = JSON.stringify(storyMap);
+const previewStartId = JSON.stringify(storyStartId);
 const previewHtml = `<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
@@ -145,6 +129,41 @@ const previewHtml = `<!DOCTYPE html>
       gap: 10px;
       margin-top: 14px;
     }
+    .row.carousel {
+      display: block;
+    }
+    .carousel-track {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: 10px;
+      width: 100%;
+    }
+    .card {
+      background: white;
+      border-radius: 18px;
+      overflow: hidden;
+      box-shadow: 0 10px 22px rgba(45, 36, 27, 0.08);
+    }
+    .card img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: cover;
+      display: block;
+      background: #eee4d8;
+    }
+    .card-body {
+      padding: 12px;
+    }
+    .card-title {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .card-copy {
+      font-size: 14px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
     button {
       border: 0;
       border-radius: 16px;
@@ -166,15 +185,16 @@ const previewHtml = `<!DOCTYPE html>
     <div class="subtitle">本機模擬 LINE 對話流程，先看故事翻頁效果。</div>
     <section class="chat" id="chat"></section>
     <section class="controls">
-      <button data-action="開始故事">開始故事</button>
-      <button data-action="下一頁">下一頁</button>
-      <button data-action="上一頁">上一頁</button>
-      <button data-action="重來">重來</button>
+      <button data-slot="0">開始故事</button>
+      <button data-slot="1">重來</button>
+      <button data-slot="2">目錄</button>
+      <button data-slot="3">重來</button>
     </section>
   </main>
   <script>
-    const storyPages = ${JSON.stringify(storyPages)};
-    let currentPage = 0;
+    const storyMap = ${previewNodes};
+    const storyStartId = ${previewStartId};
+    let currentNodeId = storyStartId;
     const chat = document.getElementById('chat');
 
     function addBubble(role, text) {
@@ -188,30 +208,113 @@ const previewHtml = `<!DOCTYPE html>
       chat.scrollTop = chat.scrollHeight;
     }
 
-    function reply(message) {
-      let replyText = '歡迎來到數位繪本。輸入「開始故事」開始，或輸入「下一頁」、「上一頁」、「重來」。';
+    function addCarousel(cards) {
+      const row = document.createElement('div');
+      row.className = 'row carousel';
+      const track = document.createElement('div');
+      track.className = 'carousel-track';
 
-      if (message === '開始故事') {
-        currentPage = 1;
-        replyText = storyPages[currentPage];
-      } else if (message === '下一頁') {
-        currentPage = Math.min(currentPage + 1, storyPages.length - 1);
-        replyText = storyPages[currentPage];
-      } else if (message === '上一頁') {
-        currentPage = Math.max(currentPage - 1, 0);
-        replyText = storyPages[currentPage];
-      } else if (message === '重來') {
-        currentPage = 0;
-        replyText = storyPages[currentPage];
-      }
+      cards.forEach((card) => {
+        const item = document.createElement('div');
+        item.className = 'card';
+        item.innerHTML = \`
+          <img src="/\${card.image}" alt="\${card.title}">
+          <div class="card-body">
+            <div class="card-title">\${card.title}</div>
+            <div class="card-copy">\${card.body}</div>
+          </div>
+        \`;
+        track.appendChild(item);
+      });
 
-      addBubble('user', message);
-      window.setTimeout(() => addBubble('bot', replyText), 180);
+      row.appendChild(track);
+      chat.appendChild(row);
+      chat.scrollTop = chat.scrollHeight;
     }
 
-    addBubble('bot', '歡迎來到數位繪本預覽。請按下方按鈕開始測試。');
+    function renderNode(nodeId, leadText = '') {
+      currentNodeId = nodeId;
+      const node = storyMap[nodeId];
 
-    document.querySelectorAll('button[data-action]').forEach((button) => {
+      if (leadText) addBubble('bot', leadText);
+
+      node.blocks.forEach((block) => {
+        if (block.type === 'text') {
+          addBubble('bot', block.text);
+        } else if (block.type === 'gallery') {
+          addCarousel(block.cards);
+        }
+      });
+
+      if (node.choice) {
+        addBubble('bot', node.choice.prompt);
+        updateButtons(node.choice.correct, node.choice.wrong);
+      } else if (node.continue) {
+        updateButtons(node.continue.label, '重來');
+      } else if (node.endingText) {
+        addBubble('bot', node.endingText);
+        updateButtons('開始故事', '重來');
+      }
+    }
+
+    function updateButtons(primary, secondary) {
+      const buttons = document.querySelectorAll('button[data-slot]');
+      buttons[0].textContent = primary;
+      buttons[0].dataset.action = primary;
+      buttons[1].textContent = secondary;
+      buttons[1].dataset.action = secondary;
+      buttons[2].textContent = '目錄';
+      buttons[2].dataset.action = '目錄';
+      buttons[3].textContent = '重來';
+      buttons[3].dataset.action = '重來';
+    }
+
+    function reply(message) {
+      addBubble('user', message);
+
+      window.setTimeout(() => {
+        if (message === '開始故事') {
+          renderNode(storyStartId);
+          return;
+        }
+
+        if (message === '目錄') {
+          addBubble('bot', '這是《熊熊尋心》的本機預覽。請用按鈕測試互動分支。');
+          return;
+        }
+
+        if (message === '重來') {
+          renderNode(storyStartId, '已回到故事起點。');
+          return;
+        }
+
+        const node = storyMap[currentNodeId];
+        if (!node) return;
+
+        if (node.choice && message === node.choice.wrong) {
+          addBubble('bot', node.choice.wrongReply);
+          addBubble('bot', node.choice.prompt);
+          return;
+        }
+
+        if (node.choice && message === node.choice.correct) {
+          renderNode(node.choice.next, node.choice.successReply);
+          return;
+        }
+
+        if (node.continue && message === node.continue.label) {
+          renderNode(node.continue.next);
+          return;
+        }
+
+        addBubble('bot', '請直接使用下方按鈕。');
+      }, 180);
+    }
+
+    addBubble('bot', '歡迎來到《熊熊尋心》預覽。先按「開始故事」即可在本機模擬互動流程。');
+    updateButtons('開始故事', '重來');
+
+    document.querySelectorAll('button[data-slot]').forEach((button) => {
       button.addEventListener('click', () => reply(button.dataset.action));
     });
   </script>
@@ -233,40 +336,22 @@ function handleEvent(event) {
 
   const userMessage = event.message.text.trim();
   const userId = event.source.userId || event.source.groupId || event.source.roomId || 'default';
-  const session = userSessions.get(userId) || { nodeId: 'start', page: 0 };
+  const session = userSessions.get(userId) || { nodeId: storyStartId };
 
   if (userMessage === '開始故事') {
-    userSessions.set(userId, { nodeId: 'start', page: 0 });
-
-    return client.replyMessage(event.replyToken, [
-      {
-        type: 'text',
-        text: '熊熊在森林的深處醒來，走著走著到了被巨石擋住的山徑。眼前只剩兩條路，他必須做出選擇。'
-      },
-      createChoiceFlex({
-        title: '遇到障礙的你覺得？',
-        imageUrl: `${publicBaseUrl}/assets/story-start.png`,
-        optionA: {
-          label: '翻越巨石',
-          text: '選擇：翻越巨石'
-        },
-        optionB: {
-          label: '安全小路',
-          text: '選擇：繞去安全小路'
-        }
-      })
-    ]);
+    userSessions.set(userId, { nodeId: storyStartId });
+    return replyWithNode(event.replyToken, storyStartId);
   }
 
   if (userMessage === '目錄') {
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: '可輸入：開始故事、目錄、重來。選項請直接點卡片按鈕。'
+      text: '可輸入：開始故事、目錄、重來。中段會先用圖卡推進劇情，只有關鍵場景才會停下來讓你做選擇。'
     });
   }
 
   if (userMessage === '重來') {
-    userSessions.set(userId, { nodeId: 'start', page: 0 });
+    userSessions.set(userId, { nodeId: storyStartId });
 
     return client.replyMessage(event.replyToken, {
       type: 'text',
@@ -274,61 +359,75 @@ function handleEvent(event) {
     });
   }
 
-  const nextNodeId = storyNodes[session.nodeId]?.next?.[userMessage];
+  const node = storyMap[session.nodeId];
 
-  if (nextNodeId === 'brave-path') {
-    userSessions.set(userId, { nodeId: 'brave-path', page: 0 });
-
+  if (node?.choice && userMessage === node.choice.wrong) {
     return client.replyMessage(event.replyToken, [
       {
         type: 'text',
-        text: '熊熊決定正面迎戰。他踩上岩石、穩住呼吸，慢慢把眼前的大障礙拆成一小步一小步。'
+        text: node.choice.wrongReply
       },
-      createStoryCarousel([
-        {
-          imageUrl: `${publicBaseUrl}/assets/story-brave-1.png`,
-          title: '第 1 幕',
-          body: '熊熊抓住突出的石塊，一步一步往上爬。雖然辛苦，但他開始相信自己真的做得到。'
-        },
-        {
-          imageUrl: `${publicBaseUrl}/assets/story-brave-2.png`,
-          title: '第 2 幕',
-          body: '傍晚時，他成功翻過巨石，看到更遼闊的天空，也看到更強壯的自己。'
-        }
-      ])
+      createChoiceFlex(node.choice)
     ]);
   }
 
-  if (nextNodeId === 'careful-path') {
-    userSessions.set(userId, { nodeId: 'careful-path', page: 0 });
+  if (node?.choice && userMessage === node.choice.correct) {
+    userSessions.set(userId, { nodeId: node.choice.next });
+    return replyWithNode(event.replyToken, node.choice.next, node.choice.successReply);
+  }
 
-    return client.replyMessage(event.replyToken, [
-      {
-        type: 'text',
-        text: '熊熊沒有硬衝。他先觀察地形，決定繞去一條較安全的小路，邊走邊為接下來的旅程做準備。'
-      },
-      createStoryCarousel([
-        {
-          imageUrl: `${publicBaseUrl}/assets/story-careful-1.png`,
-          title: '第 1 幕',
-          body: '熊熊在路邊撿起樹枝當手杖，沿著比較平穩的山徑前進，心裡也跟著穩下來。'
-        },
-        {
-          imageUrl: `${publicBaseUrl}/assets/story-careful-2.png`,
-          title: '第 2 幕',
-          body: '夜幕降臨前，他順利抵達營地。原來慢一點，不代表退縮，而是更懂得照顧自己。'
-        }
-      ])
-    ]);
+  if (node?.continue && userMessage === node.continue.label) {
+    userSessions.set(userId, { nodeId: node.continue.next });
+    return replyWithNode(event.replyToken, node.continue.next);
   }
 
   return client.replyMessage(event.replyToken, {
     type: 'text',
-    text: '輸入「開始故事」開始互動繪本，或輸入「目錄」查看操作。'
+    text: '輸入「開始故事」開始互動繪本。進行中請直接點按鈕或輸入畫面上的提示文字。'
   });
 }
 
-function createChoiceFlex({ title, imageUrl, optionA, optionB }) {
+function replyWithNode(replyToken, nodeId, leadText) {
+  const node = storyMap[nodeId];
+  const messages = [];
+
+  if (leadText) {
+    messages.push({
+      type: 'text',
+      text: leadText
+    });
+  }
+
+  node.blocks?.forEach((block) => {
+    if (block.type === 'text') {
+      messages.push({
+        type: 'text',
+        text: block.text
+      });
+    } else if (block.type === 'gallery') {
+      messages.push(createStoryCarousel(block.cards));
+    }
+  });
+
+  if (node.choice) {
+    messages.push({
+      type: 'text',
+      text: node.choice.prompt
+    });
+    messages.push(createChoiceFlex(node.choice));
+  } else if (node.continue) {
+    messages.push(createContinuePrompt(node.continue.label));
+  } else if (node.endingText) {
+    messages.push({
+      type: 'text',
+      text: node.endingText
+    });
+  }
+
+  return client.replyMessage(replyToken, messages.slice(0, 5));
+}
+
+function createChoiceFlex(choice) {
   return {
     type: 'flex',
     altText: '互動繪本選項',
@@ -337,7 +436,7 @@ function createChoiceFlex({ title, imageUrl, optionA, optionB }) {
       size: 'giga',
       hero: {
         type: 'image',
-        url: imageUrl,
+        url: `${publicBaseUrl}/${choice.image}`,
         size: 'full',
         aspectRatio: '4:3',
         aspectMode: 'cover'
@@ -349,9 +448,9 @@ function createChoiceFlex({ title, imageUrl, optionA, optionB }) {
         contents: [
           {
             type: 'text',
-            text: title,
+            text: choice.prompt,
             weight: 'bold',
-            size: 'xl',
+            size: 'lg',
             wrap: true
           },
           {
@@ -360,8 +459,8 @@ function createChoiceFlex({ title, imageUrl, optionA, optionB }) {
             color: '#F3BD63',
             action: {
               type: 'message',
-              label: optionA.label,
-              text: optionA.text
+              label: choice.correct,
+              text: choice.correct
             }
           },
           {
@@ -370,12 +469,31 @@ function createChoiceFlex({ title, imageUrl, optionA, optionB }) {
             color: '#7FA8D1',
             action: {
               type: 'message',
-              label: optionB.label,
-              text: optionB.text
+              label: choice.wrong,
+              text: choice.wrong
             }
           }
         ]
       }
+    }
+  };
+}
+
+function createContinuePrompt(label) {
+  return {
+    type: 'text',
+    text: '看完這一幕後，點下面按鈕繼續。',
+    quickReply: {
+      items: [
+        {
+          type: 'action',
+          action: {
+            type: 'message',
+            label,
+            text: label
+          }
+        }
+      ]
     }
   };
 }
@@ -390,7 +508,7 @@ function createStoryCarousel(cards) {
         type: 'bubble',
         hero: {
           type: 'image',
-          url: card.imageUrl,
+          url: `${publicBaseUrl}/${card.image}`,
           size: 'full',
           aspectRatio: '1:1',
           aspectMode: 'cover'
@@ -404,17 +522,55 @@ function createStoryCarousel(cards) {
               type: 'text',
               text: card.title,
               weight: 'bold',
-              size: 'lg'
+              size: 'lg',
+              wrap: true
             },
-            {
+            ...(card.body ? [{
               type: 'text',
               text: card.body,
               wrap: true,
               size: 'md'
-            }
+            }] : [])
           ]
         }
       }))
+    }
+  };
+}
+
+function createStoryBubble(card) {
+  return {
+    type: 'flex',
+    altText: card.title,
+    contents: {
+      type: 'bubble',
+      hero: {
+        type: 'image',
+        url: `${publicBaseUrl}/${card.image}`,
+        size: 'full',
+        aspectRatio: '1:1',
+        aspectMode: 'cover'
+      },
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        spacing: 'md',
+        contents: [
+          {
+            type: 'text',
+            text: card.title,
+            weight: 'bold',
+            size: 'lg',
+            wrap: true
+          },
+          ...(card.body ? [{
+            type: 'text',
+            text: card.body,
+            wrap: true,
+            size: 'md'
+          }] : [])
+        ]
+      }
     }
   };
 }
