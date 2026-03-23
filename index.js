@@ -42,6 +42,16 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 });
 
 const client = new line.Client(config);
+const userSessions = new Map();
+
+const storyPages = [
+  '封面：\n《小星星找晚安》\n輸入「開始故事」進入第一頁。',
+  '第 1 頁：\n小星星住在藍藍的夜空上。\n今天，它想找到一個最溫柔的晚安。',
+  '第 2 頁：\n它先飛去問月亮。\n月亮笑著說：「晚安是慢慢發亮的心。」',
+  '第 3 頁：\n它又飛去問小雲。\n小雲輕輕飄著說：「晚安是安心地閉上眼睛。」',
+  '第 4 頁：\n最後，小星星回到自己的位置。\n它發現，原來晚安就在每一次平靜呼吸裡。',
+  '結尾：\n小星星閉上眼睛，整片天空都變得柔柔亮亮的。\n故事說完了。輸入「重來」可以再看一次。'
+];
 
 function handleEvent(event) {
   if (event.type !== 'message' || event.message.type !== 'text') {
@@ -49,20 +59,28 @@ function handleEvent(event) {
   }
 
   const userMessage = event.message.text.trim();
-  console.log('userMessage:', userMessage);
-  let replyText = '我目前可以回覆這些關鍵字：你好、課程、費用、預約、地址';
+  const userId = event.source.userId || event.source.groupId || event.source.roomId || 'default';
+  const currentPage = userSessions.get(userId) ?? 0;
+  let nextPage = currentPage;
+  let replyText = '歡迎來到數位繪本。輸入「開始故事」開始，或輸入「下一頁」、「上一頁」、「重來」。';
 
-  if (userMessage === '你好') {
-    replyText = '你好，我是 LINE 自動回覆機器人。有需要可以輸入：課程、費用、預約、地址';
-  } else if (userMessage === '課程') {
-    replyText = '目前提供的服務有：個別諮詢、主題工作坊、企業內訓。';
-  } else if (userMessage === '費用') {
-    replyText = '費用會依服務內容不同而調整，請直接輸入「預約」取得聯絡方式。';
-  } else if (userMessage === '預約') {
-    replyText = '預約請提供你的姓名、可聯絡時間，以及想詢問的服務項目。';
-  } else if (userMessage === '地址') {
-    replyText = '請填入你的實體地址，或改成 Google Maps 連結。';
+  if (userMessage === '開始故事') {
+    nextPage = 1;
+    replyText = storyPages[nextPage];
+  } else if (userMessage === '下一頁') {
+    nextPage = Math.min(currentPage + 1, storyPages.length - 1);
+    replyText = storyPages[nextPage];
+  } else if (userMessage === '上一頁') {
+    nextPage = Math.max(currentPage - 1, 0);
+    replyText = storyPages[nextPage];
+  } else if (userMessage === '重來') {
+    nextPage = 0;
+    replyText = storyPages[nextPage];
+  } else if (userMessage === '目錄') {
+    replyText = '可輸入：開始故事、下一頁、上一頁、重來';
   }
+
+  userSessions.set(userId, nextPage);
 
   console.log('replyText:', replyText);
 
