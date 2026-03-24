@@ -4,6 +4,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const path = require('path');
 const { storyMap, storyStartId } = require('./storyData');
+const { mountAdmin } = require('./lib/adminMount');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -25,6 +26,7 @@ app.use((req, res, next) => {
 
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 app.use('/public', express.static(path.join(__dirname, 'public')));
+mountAdmin(app, { uiPath: '/admin', apiPath: '/admin-api' });
 
 app.get('/webhook', (req, res) => {
   res.status(200).send('webhook endpoint is alive');
