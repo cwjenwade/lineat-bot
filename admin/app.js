@@ -5,13 +5,19 @@
       type: 'narrative',
       icon: '景',
       label: '敘事圖片',
-      description: '單張圖片與敘事文字，適合建立場景與轉場。'
+      description: '單張敘事圖片加文字，適合建立場景與過場。'
+    },
+    {
+      type: 'fullscreen',
+      icon: '滿',
+      label: '滿版訊息',
+      description: '用單張大圖或單段重點文字做情緒強化與關鍵轉場。'
     },
     {
       type: 'choice',
       icon: '岔',
-      label: '雙選項',
-      description: '建立兩個選項、兩條分支與對應回應。'
+      label: '選項分支',
+      description: '建立兩個選項、兩條指向與對應回應。'
     },
     {
       type: 'carousel',
@@ -94,7 +100,7 @@
   function ensureNodeDefaults(node) {
     node.id ||= uid('node');
     node.type ||= 'narrative';
-    node.title ||= `${node.type} module`;
+    node.title ||= `新的${nodeTypeInfo(node.type).label}`;
     node.speaker ||= '';
     node.text ||= '';
     node.image ||= '';
@@ -120,11 +126,23 @@
   }
 
   function moduleTemplate(type) {
+    if (type === 'fullscreen') {
+      return {
+        id: uid('fullscreen'),
+        type,
+        title: '新的滿版訊息',
+        speaker: '旁白',
+        text: '在這裡輸入關鍵訊息。',
+        image: '',
+        nextNodeId: ''
+      };
+    }
+
     if (type === 'choice') {
       return {
         id: uid('choice'),
         type,
-        title: '新的雙選項模組',
+        title: '新的選項分支',
         text: '在這裡輸入提問或情境。',
         image: '',
         optionA: { label: '選項 A', feedback: '', nextNodeId: '' },
@@ -136,7 +154,7 @@
       return {
         id: uid('carousel'),
         type,
-        title: '新的多頁訊息模組',
+        title: '新的多頁訊息',
         pages: [
           { title: '第 1 頁', speaker: '旁白', text: '第一頁內容', image: '' }
         ],
@@ -148,7 +166,7 @@
       return {
         id: uid('dialogue'),
         type,
-        title: '新的對話框模組',
+        title: '新的對話框',
         speaker: '角色',
         text: '在這裡輸入角色對話。',
         image: '',
@@ -159,7 +177,7 @@
     return {
       id: uid('narrative'),
       type: 'narrative',
-      title: '新的敘事圖片模組',
+      title: '新的敘事圖片',
       speaker: '旁白',
       text: '在這裡輸入敘事文字。',
       image: '',
@@ -317,6 +335,9 @@
     if (node.type === 'carousel') {
       return `${node.pages?.length || 0} 頁多頁訊息`;
     }
+    if (node.type === 'fullscreen') {
+      return node.text || '尚未填寫滿版訊息內容';
+    }
     return node.text || '尚未填寫內容';
   }
 
@@ -403,7 +424,7 @@
     suggestionList.innerHTML = '';
 
     if (!state.suggestions.length) {
-      suggestionList.innerHTML = '<div class="empty">分析後的建議模組會出現在這裡。</div>';
+      suggestionList.innerHTML = '<div class="empty">分析後的 AI 劇本草稿會先出現在這裡。</div>';
       return;
     }
 
@@ -415,12 +436,12 @@
       card.innerHTML = `
         <div class="timeline-meta">
           <span class="type-pill">${info.icon} ${info.label}</span>
-          <span class="hint">建議</span>
+          <span class="hint">AI 劇本草稿</span>
         </div>
         <div class="timeline-title">${escapeHtml(node.title || info.label)}</div>
         <div class="timeline-text">${escapeHtml(nodeSummary(node))}</div>
         <div class="timeline-controls">
-          <button class="mini-btn" data-add="${index}">加入故事軸</button>
+          <button class="mini-btn" data-add="${index}">放進故事軸</button>
         </div>
       `;
       card.querySelector('[data-add]').onclick = () => applySuggestion(index);
@@ -547,7 +568,7 @@
       })));
     }
 
-    if (node.type === 'narrative' || node.type === 'dialogue') {
+    if (node.type === 'narrative' || node.type === 'dialogue' || node.type === 'fullscreen') {
       fragment.appendChild(field('下一個模組 →', renderNodeSelect(node.nextNodeId, (value) => {
         node.nextNodeId = value;
         renderImplement();
@@ -651,7 +672,7 @@
   function renderAnalysis() {
     analysisPanel.innerHTML = '';
     if (!state.analysis) {
-      analysisPanel.innerHTML = '<div class="empty" style="margin-top:12px;">分析摘要會出現在這裡。</div>';
+      analysisPanel.innerHTML = '<div class="empty" style="margin-top:12px;">分析後，這裡會顯示劇本輪廓與建議分鏡。</div>';
       return;
     }
 
@@ -669,7 +690,7 @@
     state.analysis.comparison.deltas.forEach((delta) => {
       const item = document.createElement('div');
       item.className = 'delta-item';
-      item.textContent = `${delta.type}: 目前 ${delta.existing} 個，建議 ${delta.suggested} 個`;
+      item.textContent = `${nodeTypeInfo(delta.type).label}: 目前 ${delta.existing} 個，建議 ${delta.suggested} 個`;
       deltaList.appendChild(item);
     });
 
@@ -708,7 +729,8 @@
       <div class="delta-list" style="margin-top:12px;">
         <div class="delta-item">模組總數: ${story.nodes.length}</div>
         <div class="delta-item">敘事圖片: ${countNodes(story.nodes, 'narrative')}</div>
-        <div class="delta-item">雙選項: ${countNodes(story.nodes, 'choice')}</div>
+        <div class="delta-item">滿版訊息: ${countNodes(story.nodes, 'fullscreen')}</div>
+        <div class="delta-item">選項分支: ${countNodes(story.nodes, 'choice')}</div>
         <div class="delta-item">多頁訊息: ${countNodes(story.nodes, 'carousel')}</div>
         <div class="delta-item">對話框: ${countNodes(story.nodes, 'dialogue')}</div>
       </div>
@@ -717,7 +739,7 @@
     const order = document.createElement('div');
     order.className = 'panel-card';
     order.style.margin = '0';
-    order.innerHTML = `<h3>故事順序</h3><div class="delta-list">${story.nodes.map((node, index) => `<div class="delta-item">${index + 1}. ${escapeHtml(node.title || node.id)} (${node.type})</div>`).join('')}</div>`;
+    order.innerHTML = `<h3>故事順序</h3><div class="delta-list">${story.nodes.map((node, index) => `<div class="delta-item">${index + 1}. ${escapeHtml(node.title || node.id)} (${escapeHtml(nodeTypeInfo(node.type).label)})</div>`).join('')}</div>`;
 
     summary.appendChild(overview);
     summary.appendChild(order);

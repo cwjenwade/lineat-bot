@@ -267,6 +267,9 @@
     .palette-item[data-type="choice"] .palette-icon {
       background: linear-gradient(135deg, #5c92a2, #8ec8d2);
     }
+    .palette-item[data-type="fullscreen"] .palette-icon {
+      background: linear-gradient(135deg, #b56a44, #e5a07d);
+    }
     .palette-item[data-type="carousel"] .palette-icon {
       background: linear-gradient(135deg, #7a9f63, #b6d498);
     }
@@ -399,18 +402,18 @@
       <div class="workspace" id="workspace">
         <aside class="panel">
           <div class="panel-card">
-            <h2>Suggested Modules</h2>
-            <p>右側貼上劇本並分析後，這裡會出現建議模組。你可以逐一加入，或一次套用到故事軸。</p>
-            <div class="inline-actions">
-              <button class="button secondary" id="apply-all-suggestions">全部加入左側故事軸</button>
-              <button class="button soft" id="clear-suggestions">清空建議</button>
-            </div>
+            <h2>劇本草稿</h2>
+            <p>右側貼上劇本並分析後，這裡會出現 AI 拆出的故事草稿順序。你可以先檢查，再整批套進故事軸。</p>
+              <div class="inline-actions">
+                <button class="button secondary" id="apply-all-suggestions">建立故事草稿軸</button>
+                <button class="button soft" id="clear-suggestions">清空 AI 劇本草稿</button>
+              </div>
           </div>
           <div id="suggestion-list"></div>
 
           <div class="panel-card">
-            <h2>Story Flow</h2>
-            <p>左欄就是故事順序。由上往下是主線節奏，拖曳卡片可改順序。</p>
+            <h2>故事軸</h2>
+            <p>這裡是你正式的故事順序。由上往下就是讀者會讀到的節奏，拖曳卡片可改順序。</p>
           </div>
           <div class="timeline" id="timeline"></div>
         </aside>
@@ -419,12 +422,12 @@
 
         <section class="panel">
           <div class="panel-card">
-            <h2>Module Palette</h2>
-            <p>點一下小圖示，就會在左側故事軸新增模組。</p>
+            <h2>模組區</h2>
+            <p>點一下小圖示，就會在左邊故事軸新增一個 Lineat 模組。</p>
             <div class="palette-grid" id="palette"></div>
           </div>
           <div class="panel-card">
-            <h2>Current Story</h2>
+            <h2>Story 設定</h2>
             <div class="field">
               <label for="story-title">Story 名稱</label>
               <input id="story-title" />
@@ -442,8 +445,8 @@
         <aside class="panel">
           <div class="section-stack">
             <div class="panel-card">
-              <h2>Script Analyzer</h2>
-              <p>把劇本貼進來後按分析。系統會抓出 PIC、選項、對話密度，並在左邊生出建議模組。</p>
+              <h2>劇本分析</h2>
+              <p>把劇本貼進來後按分析。系統會抓出 PIC、選項與段落節奏，並在左邊先生成 AI 劇本草稿。</p>
               <div class="field">
                 <label for="script-input">劇本貼上區</label>
                 <textarea id="script-input" style="min-height: 260px;"></textarea>
@@ -455,7 +458,7 @@
             </div>
 
             <div class="panel-card">
-              <h2>Module Inspector</h2>
+              <h2>模組設定</h2>
               <div id="node-inspector" class="empty">先從左側選一個模組。</div>
             </div>
           </div>
@@ -471,7 +474,7 @@
           <pre class="code-block" id="implement-json"></pre>
         </div>
         <div class="panel-card">
-          <h2>Implementation Summary</h2>
+          <h2>實作摘要</h2>
           <div id="implement-summary"></div>
         </div>
       </div>

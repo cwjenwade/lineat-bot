@@ -5,7 +5,7 @@ async function run() {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 
   try {
-    await page.goto('http://localhost:3002/', { waitUntil: 'networkidle' });
+    await page.goto('http://127.0.0.1:3002/', { waitUntil: 'networkidle' });
 
     await page.waitForSelector('text=CONStruct');
     await page.waitForSelector('text=Implement');
@@ -24,9 +24,10 @@ async function run() {
     if (!box) {
       throw new Error('Left gutter missing');
     }
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    const dragY = box.y + 24;
+    await page.mouse.move(box.x + box.width / 2, dragY);
     await page.mouse.down();
-    await page.mouse.move(box.x + 20, box.y + box.height / 2, { steps: 8 });
+    await page.mouse.move(box.x + 120, dragY, { steps: 12 });
     await page.mouse.up();
 
     const widthsAfter = await page.evaluate(() => {
