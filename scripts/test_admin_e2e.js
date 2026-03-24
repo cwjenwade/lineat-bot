@@ -7,8 +7,8 @@ async function run() {
   try {
     await page.goto('http://127.0.0.1:3002/', { waitUntil: 'networkidle' });
 
-    await page.waitForSelector('text=CONStruct');
-    await page.waitForSelector('text=Implement');
+    await page.waitForSelector('text=Create');
+    await page.waitForSelector('text=Preview');
 
     const widthsBefore = await page.evaluate(() => {
       const styles = getComputedStyle(document.documentElement);
@@ -49,13 +49,15 @@ async function run() {
     await page.click('#create-story');
     await page.locator('.story-pill.active').filter({ hasText: 'E2E Story' }).waitFor();
 
-    const beforeTimelineCount = await page.locator('#timeline .timeline-card').count();
+    const beforeTimelineCount = await page.locator('#storyboard .story-node').count();
     await page.click('.palette-item[data-type="choice"]');
-    const afterTimelineCount = await page.locator('#timeline .timeline-card').count();
+    const afterTimelineCount = await page.locator('#storyboard .story-node').count();
 
     if (afterTimelineCount !== beforeTimelineCount + 1) {
       throw new Error(`Expected timeline count ${beforeTimelineCount + 1}, got ${afterTimelineCount}`);
     }
+
+    await page.waitForSelector('#scene-preview .line-card');
 
     const script = `《熊熊測試故事》
 
@@ -68,26 +70,32 @@ PIC2
 今天先退回去
 結果 這條路暫時還沒打開，換個更靠近內心的選擇吧。`;
 
+    await page.click('#open-script-drawer');
     await page.fill('#script-input', script);
     await page.click('#analyze-script');
-    await page.waitForSelector('#suggestion-list .timeline-card');
+    await page.waitForSelector('#suggestion-list .story-node');
 
-    const suggestionCount = await page.locator('#suggestion-list .timeline-card').count();
+    const suggestionCount = await page.locator('#suggestion-list .story-node').count();
     if (suggestionCount < 2) {
       throw new Error(`Expected at least 2 suggestions, got ${suggestionCount}`);
     }
 
     await page.click('#apply-all-suggestions');
-    await page.waitForFunction(() => !document.querySelector('#suggestion-list .timeline-card'));
+    await page.waitForFunction(() => document.querySelectorAll('#suggestion-list .story-node').length === 0);
 
     await page.click('#save-story');
     await page.waitForTimeout(800);
 
-    await page.click('[data-top-tab="implement"]');
-    await page.waitForSelector('#implement-json');
-    const jsonText = await page.locator('#implement-json').textContent();
+    await page.click('[data-top-tab="preview"]');
+    await page.waitForSelector('#preview-json');
+    const jsonText = await page.locator('#preview-json').textContent();
     if (!jsonText.includes('E2E Story')) {
-      throw new Error('Implement tab JSON missing story title');
+      throw new Error('Preview tab JSON missing story title');
+    }
+
+    const chatCount = await page.locator('#preview-chat .chat-item').count();
+    if (chatCount < 1) {
+      throw new Error('Preview chat did not render any scenes');
     }
 
     console.log(JSON.stringify({
@@ -95,7 +103,7 @@ PIC2
       moduleAdded: true,
       suggestionsApplied: true,
       resized: true,
-      implementViewLoaded: true
+      previewLoaded: true
     }, null, 2));
   } finally {
     await browser.close();

@@ -5,31 +5,36 @@
       type: 'narrative',
       icon: '景',
       label: '敘事圖片',
-      description: '單張敘事圖片加文字，適合建立場景與過場。'
+      description: '單張敘事圖片加文字，適合建立場景與過場。',
+      color: '#d98045'
     },
     {
       type: 'fullscreen',
       icon: '滿',
       label: '滿版訊息',
-      description: '用單張大圖或單段重點文字做情緒強化與關鍵轉場。'
+      description: '用單張大圖或單段重點文字做情緒強化與關鍵轉場。',
+      color: '#c57c62'
     },
     {
       type: 'choice',
       icon: '岔',
       label: '選項分支',
-      description: '建立兩個選項、兩條指向與對應回應。'
+      description: '建立兩個選項、兩條指向與對應回應。',
+      color: '#5b8191'
     },
     {
       type: 'carousel',
       icon: '頁',
       label: '多頁訊息',
-      description: '橫向多頁卡片，每張可設定不同底圖與角色。'
+      description: '橫向多頁卡片，每張可設定不同底圖與角色。',
+      color: '#6e9474'
     },
     {
       type: 'dialogue',
       icon: '話',
       label: '對話框',
-      description: '角色說話或旁白提示，適合承接情緒與節奏。'
+      description: '角色說話或旁白提示，適合承接情緒與節奏。',
+      color: '#9377b0'
     }
   ];
 
@@ -37,30 +42,55 @@
     stories: [],
     activeStoryId: null,
     activeNodeId: null,
-    activeTopTab: 'construct',
+    activeTopTab: 'create',
     suggestions: [],
     analysis: null,
-    dragNodeId: null
+    dragNodeId: null,
+    drawerOpen: false
   };
 
   const storyTabs = document.getElementById('story-tabs');
   const newStoryTitle = document.getElementById('new-story-title');
-  const timeline = document.getElementById('timeline');
-  const suggestionList = document.getElementById('suggestion-list');
   const palette = document.getElementById('palette');
+  const storyboard = document.getElementById('storyboard');
+  const storyboardMeta = document.getElementById('storyboard-meta');
+  const scenePreview = document.getElementById('scene-preview');
   const nodeInspector = document.getElementById('node-inspector');
-  const storyTitle = document.getElementById('story-title');
-  const storyDescription = document.getElementById('story-description');
   const scriptInput = document.getElementById('script-input');
+  const suggestionList = document.getElementById('suggestion-list');
   const analysisPanel = document.getElementById('analysis-panel');
-  const implementJson = document.getElementById('implement-json');
-  const implementSummary = document.getElementById('implement-summary');
-  const constructView = document.getElementById('construct-view');
-  const implementView = document.getElementById('implement-view');
+  const previewStructure = document.getElementById('preview-structure');
+  const previewChat = document.getElementById('preview-chat');
+  const previewJson = document.getElementById('preview-json');
+  const createView = document.getElementById('create-view');
+  const previewView = document.getElementById('preview-view');
+  const drawerShell = document.getElementById('script-drawer-shell');
   const workspace = document.getElementById('workspace');
 
   function uid(prefix) {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  function escapeHtml(value) {
+    return `${value || ''}`
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+  }
+
+  function truncate(text, max = 120) {
+    if (!text) return '';
+    return text.length > max ? `${text.slice(0, max)}...` : text;
+  }
+
+  function nodeTypeInfo(type) {
+    return moduleCatalog.find((item) => item.type === type) || moduleCatalog[0];
   }
 
   function activeStory() {
@@ -97,6 +127,15 @@
     });
   }
 
+  function emptyPage(index = 1) {
+    return {
+      title: `第 ${index} 頁`,
+      speaker: '旁白',
+      text: '',
+      image: ''
+    };
+  }
+
   function ensureNodeDefaults(node) {
     node.id ||= uid('node');
     node.type ||= 'narrative';
@@ -118,10 +157,16 @@
     }
 
     if (node.type === 'carousel') {
-      node.pages ||= [{ title: '第 1 頁', speaker: '', text: '', image: '' }];
+      node.pages ||= [emptyPage(1)];
       if (!node.pages.length) {
-        node.pages.push({ title: '第 1 頁', speaker: '', text: '', image: '' });
+        node.pages.push(emptyPage(1));
       }
+      node.pages.forEach((page, index) => {
+        page.title ||= `第 ${index + 1} 頁`;
+        page.speaker ||= '旁白';
+        page.text ||= '';
+        page.image ||= '';
+      });
     }
   }
 
@@ -155,9 +200,7 @@
         id: uid('carousel'),
         type,
         title: '新的多頁訊息',
-        pages: [
-          { title: '第 1 頁', speaker: '旁白', text: '第一頁內容', image: '' }
-        ],
+        pages: [emptyPage(1)],
         nextNodeId: ''
       };
     }
@@ -185,13 +228,30 @@
     };
   }
 
+  function nodeSummary(node) {
+    if (node.type === 'choice') {
+      return `${node.optionA?.label || '選項 A'}\n${node.optionB?.label || '選項 B'}`;
+    }
+    if (node.type === 'carousel') {
+      return `${node.pages?.length || 0} 頁多頁訊息`;
+    }
+    return node.text || '尚未填寫內容';
+  }
+
+  function targetTitle(targetId) {
+    if (!targetId) return '未連接';
+    const story = activeStory();
+    const target = story?.nodes.find((node) => node.id === targetId);
+    return target ? target.title : '未連接';
+  }
+
   async function loadStories() {
     const { stories } = await api('/stories');
     state.stories = stories.map((story) => ({
       ...story,
       nodes: (story.nodes || []).map((node) => ({ ...node }))
     }));
-    if (!state.activeStoryId && state.stories[0]) {
+    if (state.stories[0]) {
       state.activeStoryId = state.stories[0].id;
       state.activeNodeId = state.stories[0].nodes[0]?.id || null;
     }
@@ -206,7 +266,7 @@
     });
     state.stories.push(story);
     state.activeStoryId = story.id;
-    state.activeNodeId = null;
+    state.activeNodeId = story.nodes[0]?.id || null;
     newStoryTitle.value = '';
     render();
   }
@@ -217,8 +277,6 @@
 
     const payload = {
       ...story,
-      title: storyTitle.value.trim(),
-      description: storyDescription.value.trim(),
       nodes: story.nodes.map((node) => ({ ...node }))
     };
 
@@ -241,7 +299,6 @@
   function addNode(type, initialData = {}) {
     const story = activeStory();
     if (!story) return;
-
     const node = { ...moduleTemplate(type), ...initialData };
     ensureNodeDefaults(node);
     story.nodes.push(node);
@@ -249,26 +306,12 @@
     render();
   }
 
-  function applySuggestion(index) {
-    const suggestion = state.suggestions[index];
-    if (!suggestion) return;
-    addNode(suggestion.type, JSON.parse(JSON.stringify(suggestion)));
-    state.suggestions.splice(index, 1);
-    renderSuggestions();
-  }
-
-  function applyAllSuggestions() {
-    if (!state.suggestions.length) return;
-    const items = state.suggestions.map((suggestion) => JSON.parse(JSON.stringify(suggestion)));
-    items.forEach((suggestion) => addNode(suggestion.type, suggestion));
-    state.suggestions = [];
-    render();
-  }
-
-  function clearSuggestions() {
-    state.suggestions = [];
-    state.analysis = null;
-    render();
+  function duplicateNode(node) {
+    addNode(node.type, JSON.parse(JSON.stringify({
+      ...node,
+      id: uid(node.type),
+      title: `${node.title} Copy`
+    })));
   }
 
   function removeNode(nodeId) {
@@ -297,8 +340,7 @@
 
     const [item] = story.nodes.splice(fromIndex, 1);
     story.nodes.splice(toIndex, 0, item);
-    renderTimeline();
-    renderImplement();
+    render();
   }
 
   async function analyzeScript() {
@@ -324,21 +366,37 @@
     render();
   }
 
-  function nodeTypeInfo(type) {
-    return moduleCatalog.find((item) => item.type === type) || moduleCatalog[0];
+  function applySuggestion(index) {
+    const suggestion = state.suggestions[index];
+    if (!suggestion) return;
+    addNode(suggestion.type, JSON.parse(JSON.stringify(suggestion)));
+    state.suggestions.splice(index, 1);
+    render();
   }
 
-  function nodeSummary(node) {
-    if (node.type === 'choice') {
-      return `${node.optionA?.label || ''}\n${node.optionB?.label || ''}`.trim();
-    }
-    if (node.type === 'carousel') {
-      return `${node.pages?.length || 0} 頁多頁訊息`;
-    }
-    if (node.type === 'fullscreen') {
-      return node.text || '尚未填寫滿版訊息內容';
-    }
-    return node.text || '尚未填寫內容';
+  function applyAllSuggestions() {
+    if (!state.suggestions.length) return;
+    const items = state.suggestions.map((item) => JSON.parse(JSON.stringify(item)));
+    items.forEach((item) => addNode(item.type, item));
+    state.suggestions = [];
+    state.drawerOpen = false;
+    render();
+  }
+
+  function clearSuggestions() {
+    state.suggestions = [];
+    state.analysis = null;
+    render();
+  }
+
+  function openDrawer() {
+    state.drawerOpen = true;
+    renderDrawer();
+  }
+
+  function closeDrawer() {
+    state.drawerOpen = false;
+    renderDrawer();
   }
 
   function renderStoryTabs() {
@@ -352,30 +410,80 @@
     });
   }
 
-  function renderTimeline() {
-    timeline.innerHTML = '';
+  function renderPalette() {
+    palette.innerHTML = '';
+    moduleCatalog.forEach((module) => {
+      const button = document.createElement('button');
+      button.className = 'palette-item';
+      button.dataset.type = module.type;
+      button.innerHTML = `
+        <div class="palette-icon">${module.icon}</div>
+        <div>
+          <div class="palette-label">${module.label}</div>
+          <div class="palette-desc">${module.description}</div>
+        </div>
+      `;
+      button.onclick = () => addNode(module.type);
+      palette.appendChild(button);
+    });
+  }
+
+  function renderStoryboardMeta(story) {
+    if (!story) {
+      storyboardMeta.textContent = '';
+      return;
+    }
+
+    storyboardMeta.textContent = `${story.nodes.length} 幕 · ${countNodes(story.nodes, 'choice')} 個分支 · ${countNodes(story.nodes, 'carousel')} 個多頁訊息`;
+  }
+
+  function renderStoryboard() {
+    storyboard.innerHTML = '';
     const story = activeStory();
+    renderStoryboardMeta(story);
 
     if (!story || !story.nodes.length) {
-      timeline.innerHTML = '<div class="empty">這個故事還沒有模組。先從中間點一個模組開始。</div>';
+      storyboard.innerHTML = '<div class="empty">這裡還沒有任何一幕。先從左邊加入模組，或先匯入劇本生成草稿。</div>';
       return;
     }
 
     story.nodes.forEach((node, index) => {
       ensureNodeDefaults(node);
       const info = nodeTypeInfo(node.type);
-      const card = document.createElement('div');
-      card.className = `timeline-card ${node.id === state.activeNodeId ? 'active' : ''}`;
+
+      const card = document.createElement('article');
+      card.className = `story-node ${node.id === state.activeNodeId ? 'active' : ''}`;
       card.draggable = true;
       card.dataset.nodeId = node.id;
+
+      const thumb = node.image ? `<img class="node-thumb" src="${escapeHtml(node.image)}" alt="">` : '';
+      const pages = node.type === 'carousel'
+        ? `<div class="story-node-pages">${node.pages.map((page, pageIndex) => `<span class="page-chip">第 ${pageIndex + 1} 頁</span>`).join('')}</div>`
+        : '';
+      const branches = node.type === 'choice'
+        ? `<div class="story-node-branches">
+            <span class="branch-chip">A: ${escapeHtml(node.optionA.label)}</span>
+            <span class="branch-chip">B: ${escapeHtml(node.optionB.label)}</span>
+          </div>`
+        : '';
+
+      const links = buildNodeLinks(node);
+      const linksHtml = links.length
+        ? `<div class="node-links">${links.map((link) => `<span class="link-chip">${escapeHtml(link)}</span>`).join('')}</div>`
+        : '';
+
       card.innerHTML = `
-        <div class="timeline-meta">
-          <span class="type-pill">${info.icon} ${info.label}</span>
-          <span class="hint">#${index + 1}</span>
+        <div class="story-node-header">
+          <span class="type-pill" style="background:${info.color}18;color:${info.color};">${info.icon} ${info.label}</span>
+          <span class="node-index">第 ${index + 1} 幕</span>
         </div>
-        <div class="timeline-title">${escapeHtml(node.title || info.label)}</div>
-        <div class="timeline-text">${escapeHtml(nodeSummary(node))}</div>
-        <div class="timeline-controls">
+        <div class="story-node-title">${escapeHtml(node.title || info.label)}</div>
+        <div class="story-node-summary">${escapeHtml(truncate(nodeSummary(node), 180))}</div>
+        ${thumb}
+        ${pages}
+        ${branches}
+        ${linksHtml}
+        <div class="inline-actions">
           <button class="mini-btn" data-action="duplicate">複製</button>
           <button class="mini-btn" data-action="delete">刪除</button>
         </div>
@@ -390,34 +498,50 @@
         }
         if (action === 'duplicate') {
           event.stopPropagation();
-          addNode(node.type, JSON.parse(JSON.stringify({
-            ...node,
-            id: uid(node.type),
-            title: `${node.title} Copy`
-          })));
+          duplicateNode(node);
           return;
         }
         state.activeNodeId = node.id;
-        renderInspector();
-        renderTimeline();
+        render();
       };
 
       card.addEventListener('dragstart', () => {
         state.dragNodeId = node.id;
         card.classList.add('dragging');
       });
+
       card.addEventListener('dragend', () => {
         state.dragNodeId = null;
         card.classList.remove('dragging');
       });
+
       card.addEventListener('dragover', (event) => event.preventDefault());
       card.addEventListener('drop', (event) => {
         event.preventDefault();
         reorderNodes(state.dragNodeId, node.id);
       });
 
-      timeline.appendChild(card);
+      storyboard.appendChild(card);
     });
+  }
+
+  function buildNodeLinks(node) {
+    if (node.type === 'choice') {
+      return [
+        `A -> ${targetTitle(node.optionA.nextNodeId)}`,
+        `B -> ${targetTitle(node.optionB.nextNodeId)}`
+      ];
+    }
+    if (node.nextNodeId) {
+      return [`Next -> ${targetTitle(node.nextNodeId)}`];
+    }
+    return [];
+  }
+
+  function renderDrawer() {
+    drawerShell.classList.toggle('open', state.drawerOpen);
+    renderSuggestions();
+    renderAnalysis();
   }
 
   function renderSuggestions() {
@@ -431,17 +555,17 @@
     state.suggestions.forEach((node, index) => {
       ensureNodeDefaults(node);
       const info = nodeTypeInfo(node.type);
-      const card = document.createElement('div');
-      card.className = 'timeline-card suggestion-card';
+      const card = document.createElement('article');
+      card.className = 'story-node';
       card.innerHTML = `
-        <div class="timeline-meta">
-          <span class="type-pill">${info.icon} ${info.label}</span>
-          <span class="hint">AI 劇本草稿</span>
+        <div class="story-node-header">
+          <span class="type-pill" style="background:${info.color}18;color:${info.color};">${info.icon} ${info.label}</span>
+          <span class="node-index">草稿 ${index + 1}</span>
         </div>
-        <div class="timeline-title">${escapeHtml(node.title || info.label)}</div>
-        <div class="timeline-text">${escapeHtml(nodeSummary(node))}</div>
-        <div class="timeline-controls">
-          <button class="mini-btn" data-add="${index}">放進故事軸</button>
+        <div class="story-node-title">${escapeHtml(node.title || info.label)}</div>
+        <div class="story-node-summary">${escapeHtml(truncate(nodeSummary(node), 160))}</div>
+        <div class="inline-actions">
+          <button class="mini-btn" data-add="${index}">加入故事軸</button>
         </div>
       `;
       card.querySelector('[data-add]').onclick = () => applySuggestion(index);
@@ -449,20 +573,54 @@
     });
   }
 
-  function renderPalette() {
-    palette.innerHTML = '';
-    moduleCatalog.forEach((module) => {
-      const item = document.createElement('button');
-      item.className = 'palette-item';
-      item.dataset.type = module.type;
-      item.innerHTML = `
-        <div class="palette-icon">${module.icon}</div>
-        <div class="palette-label">${module.label}</div>
-        <div class="palette-desc">${module.description}</div>
-      `;
-      item.onclick = () => addNode(module.type);
-      palette.appendChild(item);
+  function renderAnalysis() {
+    analysisPanel.innerHTML = '';
+    if (!state.analysis) {
+      analysisPanel.innerHTML = '<div class="empty">分析後，這裡會顯示劇本輪廓與建議分鏡。</div>';
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="analysis-summary">
+        <div class="stat"><strong>${state.analysis.comparison.existingModules}</strong>現有模組</div>
+        <div class="stat"><strong>${state.analysis.comparison.suggestedModules}</strong>建議模組</div>
+        <div class="stat"><strong>${state.analysis.sections.length}</strong>劇本段落</div>
+      </div>
+    `;
+
+    const deltaList = document.createElement('div');
+    deltaList.className = 'delta-list';
+    state.analysis.comparison.deltas.forEach((delta) => {
+      const item = document.createElement('div');
+      item.className = 'delta-item';
+      item.textContent = `${nodeTypeInfo(delta.type).label}: 目前 ${delta.existing} 個，建議 ${delta.suggested} 個`;
+      deltaList.appendChild(item);
     });
+
+    const outlineList = document.createElement('div');
+    outlineList.className = 'outline-list';
+    state.analysis.sections.slice(0, 10).forEach((section) => {
+      const item = document.createElement('div');
+      item.className = 'outline-item';
+      item.innerHTML = `<strong>${escapeHtml(section.key)}</strong><br>${escapeHtml(section.preview)}`;
+      outlineList.appendChild(item);
+    });
+
+    wrap.appendChild(deltaList);
+    wrap.appendChild(outlineList);
+    analysisPanel.appendChild(wrap);
+  }
+
+  function renderScenePreview() {
+    scenePreview.innerHTML = '';
+    const node = activeNode();
+    if (!node) {
+      scenePreview.innerHTML = '<div class="empty">先從中間故事軸選一幕，這裡就會顯示 LINE 預覽。</div>';
+      return;
+    }
+
+    scenePreview.appendChild(buildNodePreview(node));
   }
 
   function renderNodeSelect(value, onChange) {
@@ -510,19 +668,21 @@
       onDone(asset.url);
       render();
     };
+
     wrapper.appendChild(input);
     if (currentValue) {
       const image = document.createElement('img');
-      image.className = 'preview-image';
       image.src = currentValue;
+      image.className = 'node-thumb';
       wrapper.appendChild(image);
     }
     return wrapper;
   }
 
   function renderInspector() {
-    const node = activeNode();
+    nodeInspector.innerHTML = '';
     const story = activeStory();
+    const node = activeNode();
 
     if (!story) {
       nodeInspector.className = 'empty';
@@ -531,264 +691,290 @@
     }
 
     if (!node) {
-      nodeInspector.className = 'empty';
-      nodeInspector.innerHTML = '先從左側選一個模組。';
+      nodeInspector.className = '';
+      const storyCard = document.createElement('div');
+      storyCard.className = 'editor-layout';
+      storyCard.appendChild(field('Story 名稱', textInput(story.title || '', (value) => {
+        story.title = value;
+        renderStoryTabs();
+        renderPreviewTab();
+      })));
+      storyCard.appendChild(field('Story 描述', textArea(story.description || '', (value) => {
+        story.description = value;
+        renderPreviewTab();
+      })));
+      nodeInspector.appendChild(storyCard);
       return;
     }
 
     nodeInspector.className = '';
-    nodeInspector.innerHTML = '';
     ensureNodeDefaults(node);
 
-    const fragment = document.createDocumentFragment();
+    const editor = document.createElement('div');
+    editor.className = 'editor-layout';
     const info = nodeTypeInfo(node.type);
 
-    const header = document.createElement('div');
-    header.className = 'field';
-    header.innerHTML = `<strong>${info.label}</strong><div class="hint">你正在編輯這個模組的內容與連線。</div>`;
-    fragment.appendChild(header);
+    const intro = document.createElement('div');
+    intro.className = 'hint';
+    intro.textContent = `正在編輯：${info.label}。先確認上面的 LINE 預覽，再調整這一幕的內容與連線。`;
+    editor.appendChild(intro);
 
-    fragment.appendChild(field('模組名稱', textInput(node.title, (value) => {
+    editor.appendChild(field('模組名稱', textInput(node.title, (value) => {
       node.title = value;
-      renderTimeline();
-      renderImplement();
+      render();
     })));
 
-    if (node.type !== 'carousel') {
-      fragment.appendChild(field('角色名稱', textInput(node.speaker || '', (value) => {
-        node.speaker = value;
-      })));
-      fragment.appendChild(field('文字內容', textArea(node.text || '', (value) => {
-        node.text = value;
-        renderTimeline();
-        renderImplement();
-      })));
-      fragment.appendChild(field('圖片上傳', uploadField(node.image, (url) => {
-        node.image = url;
-      })));
-    }
-
-    if (node.type === 'narrative' || node.type === 'dialogue' || node.type === 'fullscreen') {
-      fragment.appendChild(field('下一個模組 →', renderNodeSelect(node.nextNodeId, (value) => {
-        node.nextNodeId = value;
-        renderImplement();
-      })));
-    }
-
     if (node.type === 'choice') {
-      fragment.appendChild(field('提問內容', textArea(node.text || '', (value) => {
+      editor.appendChild(field('提問內容', textArea(node.text, (value) => {
         node.text = value;
-        renderTimeline();
-        renderImplement();
+        render();
       })));
-      fragment.appendChild(field('背景圖', uploadField(node.image, (url) => {
+      editor.appendChild(field('背景圖', uploadField(node.image, (url) => {
         node.image = url;
+        render();
       })));
-      fragment.appendChild(field('選項 A', textInput(node.optionA.label, (value) => {
+      editor.appendChild(field('選項 A 標籤', textInput(node.optionA.label, (value) => {
         node.optionA.label = value;
-        renderTimeline();
-        renderImplement();
+        render();
       })));
-      fragment.appendChild(field('選項 A 回應', textArea(node.optionA.feedback, (value) => {
+      editor.appendChild(field('選項 A 回應', textArea(node.optionA.feedback, (value) => {
         node.optionA.feedback = value;
       })));
-      fragment.appendChild(field('選項 A 指向 →', renderNodeSelect(node.optionA.nextNodeId, (value) => {
+      editor.appendChild(field('選項 A 指向', renderNodeSelect(node.optionA.nextNodeId, (value) => {
         node.optionA.nextNodeId = value;
-        renderImplement();
+        render();
       })));
-      fragment.appendChild(field('選項 B', textInput(node.optionB.label, (value) => {
+      editor.appendChild(field('選項 B 標籤', textInput(node.optionB.label, (value) => {
         node.optionB.label = value;
-        renderTimeline();
-        renderImplement();
+        render();
       })));
-      fragment.appendChild(field('選項 B 回應', textArea(node.optionB.feedback, (value) => {
+      editor.appendChild(field('選項 B 回應', textArea(node.optionB.feedback, (value) => {
         node.optionB.feedback = value;
       })));
-      fragment.appendChild(field('選項 B 指向 →', renderNodeSelect(node.optionB.nextNodeId, (value) => {
+      editor.appendChild(field('選項 B 指向', renderNodeSelect(node.optionB.nextNodeId, (value) => {
         node.optionB.nextNodeId = value;
-        renderImplement();
+        render();
       })));
+    } else if (node.type === 'carousel') {
+      node.pages.forEach((page, index) => {
+        const pageCard = document.createElement('div');
+        pageCard.className = 'panel-card';
+        pageCard.style.margin = '0';
+        pageCard.appendChild(field(`第 ${index + 1} 頁標題`, textInput(page.title, (value) => {
+          page.title = value;
+          render();
+        })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁角色`, textInput(page.speaker, (value) => {
+          page.speaker = value;
+          render();
+        })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁文字`, textArea(page.text, (value) => {
+          page.text = value;
+          render();
+        })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁底圖`, uploadField(page.image, (url) => {
+          page.image = url;
+          render();
+        })));
+        const removeButton = document.createElement('button');
+        removeButton.className = 'button soft';
+        removeButton.textContent = '刪掉這一頁';
+        removeButton.onclick = () => {
+          node.pages.splice(index, 1);
+          if (!node.pages.length) node.pages.push(emptyPage(1));
+          render();
+        };
+        pageCard.appendChild(removeButton);
+        editor.appendChild(pageCard);
+      });
+
+      const addPageButton = document.createElement('button');
+      addPageButton.className = 'button secondary';
+      addPageButton.textContent = '新增一頁';
+      addPageButton.onclick = () => {
+        node.pages.push(emptyPage(node.pages.length + 1));
+        render();
+      };
+      editor.appendChild(addPageButton);
+      editor.appendChild(field('下一個模組', renderNodeSelect(node.nextNodeId, (value) => {
+        node.nextNodeId = value;
+        render();
+      })));
+    } else {
+      editor.appendChild(field('角色名稱', textInput(node.speaker, (value) => {
+        node.speaker = value;
+        render();
+      })));
+      editor.appendChild(field('文字內容', textArea(node.text, (value) => {
+        node.text = value;
+        render();
+      })));
+      editor.appendChild(field(node.type === 'fullscreen' ? '滿版圖' : '圖片', uploadField(node.image, (url) => {
+        node.image = url;
+        render();
+      })));
+      editor.appendChild(field('下一個模組', renderNodeSelect(node.nextNodeId, (value) => {
+        node.nextNodeId = value;
+        render();
+      })));
+    }
+
+    nodeInspector.appendChild(editor);
+  }
+
+  function buildNodePreview(node) {
+    ensureNodeDefaults(node);
+
+    if (node.type === 'dialogue') {
+      const bubble = document.createElement('div');
+      bubble.className = 'line-bubble';
+      bubble.innerHTML = `
+        <span class="line-label">${escapeHtml(node.speaker || '角色')}</span>
+        <div class="line-text">${escapeHtml(node.text)}</div>
+      `;
+      return bubble;
     }
 
     if (node.type === 'carousel') {
-      node.pages.forEach((page, index) => {
-        const block = document.createElement('div');
-        block.className = 'panel-card';
-        block.style.margin = '0 0 10px';
-        block.style.padding = '12px';
-        block.appendChild(field(`第 ${index + 1} 頁標題`, textInput(page.title, (value) => {
-          page.title = value;
-          renderImplement();
-        })));
-        block.appendChild(field(`第 ${index + 1} 頁角色`, textInput(page.speaker, (value) => {
-          page.speaker = value;
-          renderImplement();
-        })));
-        block.appendChild(field(`第 ${index + 1} 頁文字`, textArea(page.text, (value) => {
-          page.text = value;
-          renderTimeline();
-          renderImplement();
-        })));
-        block.appendChild(field(`第 ${index + 1} 頁底圖`, uploadField(page.image, (url) => {
-          page.image = url;
-        })));
-
-        const removePage = document.createElement('button');
-        removePage.className = 'button soft';
-        removePage.textContent = '刪掉這一頁';
-        removePage.onclick = () => {
-          node.pages.splice(index, 1);
-          if (!node.pages.length) {
-            node.pages.push({ title: '第 1 頁', speaker: '', text: '', image: '' });
-          }
-          render();
-        };
-        block.appendChild(removePage);
-        fragment.appendChild(block);
+      const wrap = document.createElement('div');
+      wrap.className = 'line-carousel';
+      node.pages.forEach((page) => {
+        const pageEl = document.createElement('article');
+        pageEl.className = 'line-page';
+        pageEl.innerHTML = `
+          ${page.image ? `<img class="line-page-image" src="${escapeHtml(page.image)}" alt="">` : ''}
+          <div class="line-page-body">
+            <div class="line-page-title">${escapeHtml(page.title || '多頁卡片')}</div>
+            <span class="line-label">${escapeHtml(page.speaker || '旁白')}</span>
+            <div class="line-text">${escapeHtml(page.text || '')}</div>
+          </div>
+        `;
+        wrap.appendChild(pageEl);
       });
-
-      const addPage = document.createElement('button');
-      addPage.className = 'button secondary';
-      addPage.textContent = '新增一頁';
-      addPage.onclick = () => {
-        node.pages.push({
-          title: `第 ${node.pages.length + 1} 頁`,
-          speaker: '',
-          text: '',
-          image: ''
-        });
-        render();
-      };
-      fragment.appendChild(addPage);
-      fragment.appendChild(field('下一個模組 →', renderNodeSelect(node.nextNodeId, (value) => {
-        node.nextNodeId = value;
-        renderImplement();
-      })));
+      return wrap;
     }
 
-    nodeInspector.appendChild(fragment);
-  }
-
-  function renderAnalysis() {
-    analysisPanel.innerHTML = '';
-    if (!state.analysis) {
-      analysisPanel.innerHTML = '<div class="empty" style="margin-top:12px;">分析後，這裡會顯示劇本輪廓與建議分鏡。</div>';
-      return;
+    if (node.type === 'choice') {
+      const card = document.createElement('article');
+      card.className = 'line-card';
+      card.innerHTML = `
+        ${node.image ? `<img class="line-card-image" src="${escapeHtml(node.image)}" alt="">` : ''}
+        <div class="line-card-body">
+          <span class="line-label">選項分支</span>
+          <div class="line-text">${escapeHtml(node.text)}</div>
+          <div class="line-actions">
+            <button class="line-action">${escapeHtml(node.optionA.label)}</button>
+            <button class="line-action">${escapeHtml(node.optionB.label)}</button>
+          </div>
+        </div>
+      `;
+      return card;
     }
 
-    const panel = document.createElement('div');
-    panel.innerHTML = `
-      <div class="analysis-summary">
-        <div class="stat"><strong>${state.analysis.comparison.existingModules}</strong>現有模組</div>
-        <div class="stat"><strong>${state.analysis.comparison.suggestedModules}</strong>建議模組</div>
-        <div class="stat"><strong>${state.analysis.sections.length}</strong>劇本段落</div>
+    if (node.type === 'fullscreen') {
+      const full = document.createElement('article');
+      full.className = 'line-fullscreen';
+      full.innerHTML = `
+        ${node.image ? `<img class="line-fullscreen-image" src="${escapeHtml(node.image)}" alt="">` : ''}
+        <div class="line-fullscreen-body">
+          <span class="line-label">${escapeHtml(node.speaker || '旁白')}</span>
+          <div class="line-text">${escapeHtml(node.text)}</div>
+        </div>
+      `;
+      return full;
+    }
+
+    const card = document.createElement('article');
+    card.className = 'line-card';
+    card.innerHTML = `
+      ${node.image ? `<img class="line-card-image" src="${escapeHtml(node.image)}" alt="">` : ''}
+      <div class="line-card-body">
+        <span class="line-label">${escapeHtml(node.speaker || '旁白')}</span>
+        <div class="line-text">${escapeHtml(node.text)}</div>
       </div>
     `;
-
-    const deltaList = document.createElement('div');
-    deltaList.className = 'delta-list';
-    state.analysis.comparison.deltas.forEach((delta) => {
-      const item = document.createElement('div');
-      item.className = 'delta-item';
-      item.textContent = `${nodeTypeInfo(delta.type).label}: 目前 ${delta.existing} 個，建議 ${delta.suggested} 個`;
-      deltaList.appendChild(item);
-    });
-
-    const outlineList = document.createElement('div');
-    outlineList.className = 'outline-list';
-    state.analysis.sections.slice(0, 8).forEach((section) => {
-      const item = document.createElement('div');
-      item.className = 'outline-item';
-      item.innerHTML = `<strong>${escapeHtml(section.key)}</strong><br>${escapeHtml(section.preview)}`;
-      outlineList.appendChild(item);
-    });
-
-    panel.appendChild(deltaList);
-    panel.appendChild(outlineList);
-    analysisPanel.appendChild(panel);
+    return card;
   }
 
-  function renderImplement() {
+  function renderPreviewTab() {
     const story = activeStory();
-    implementJson.textContent = story ? JSON.stringify(story, null, 2) : '';
+    previewStructure.innerHTML = '';
+    previewChat.innerHTML = '';
+    previewJson.textContent = story ? JSON.stringify(story, null, 2) : '';
 
     if (!story) {
-      implementSummary.innerHTML = '<div class="empty">先建立一個 Story。</div>';
+      previewStructure.innerHTML = '<div class="empty">先建立 Story。</div>';
+      previewChat.innerHTML = '<div class="empty">先建立 Story。</div>';
       return;
     }
 
-    const summary = document.createElement('div');
-    summary.className = 'section-stack';
+    if (!story.nodes.length) {
+      previewStructure.innerHTML = '<div class="empty">還沒有任何一幕。</div>';
+      previewChat.innerHTML = '<div class="empty">還沒有任何一幕可以預覽。</div>';
+      return;
+    }
 
-    const overview = document.createElement('div');
-    overview.className = 'panel-card';
-    overview.style.margin = '0';
-    overview.innerHTML = `
-      <h3>${escapeHtml(story.title || 'Untitled')}</h3>
-      <p>${escapeHtml(story.description || '尚未填寫描述')}</p>
-      <div class="delta-list" style="margin-top:12px;">
-        <div class="delta-item">模組總數: ${story.nodes.length}</div>
-        <div class="delta-item">敘事圖片: ${countNodes(story.nodes, 'narrative')}</div>
-        <div class="delta-item">滿版訊息: ${countNodes(story.nodes, 'fullscreen')}</div>
-        <div class="delta-item">選項分支: ${countNodes(story.nodes, 'choice')}</div>
-        <div class="delta-item">多頁訊息: ${countNodes(story.nodes, 'carousel')}</div>
-        <div class="delta-item">對話框: ${countNodes(story.nodes, 'dialogue')}</div>
-      </div>
-    `;
+    const structureWrap = document.createElement('div');
+    structureWrap.className = 'section-stack';
 
-    const order = document.createElement('div');
-    order.className = 'panel-card';
-    order.style.margin = '0';
-    order.innerHTML = `<h3>故事順序</h3><div class="delta-list">${story.nodes.map((node, index) => `<div class="delta-item">${index + 1}. ${escapeHtml(node.title || node.id)} (${escapeHtml(nodeTypeInfo(node.type).label)})</div>`).join('')}</div>`;
+    story.nodes.forEach((node, index) => {
+      ensureNodeDefaults(node);
+      const info = nodeTypeInfo(node.type);
 
-    summary.appendChild(overview);
-    summary.appendChild(order);
-    implementSummary.innerHTML = '';
-    implementSummary.appendChild(summary);
+      const item = document.createElement('article');
+      item.className = 'story-node';
+      item.style.margin = '0';
+      item.innerHTML = `
+        <div class="story-node-header">
+          <span class="type-pill" style="background:${info.color}18;color:${info.color};">${info.icon} ${info.label}</span>
+          <span class="node-index">第 ${index + 1} 幕</span>
+        </div>
+        <div class="story-node-title">${escapeHtml(node.title)}</div>
+        <div class="story-node-summary">${escapeHtml(truncate(nodeSummary(node), 140))}</div>
+      `;
+      structureWrap.appendChild(item);
+
+      const chatItem = document.createElement('div');
+      chatItem.className = 'chat-item';
+      chatItem.innerHTML = `
+        <div class="chat-avatar" style="background:${info.color};">${info.icon}</div>
+        <div class="chat-bubble"></div>
+      `;
+      chatItem.querySelector('.chat-bubble').appendChild(buildNodePreview(node));
+      previewChat.appendChild(chatItem);
+    });
+
+    previewStructure.appendChild(structureWrap);
   }
 
   function renderTopTab() {
     document.querySelectorAll('[data-top-tab]').forEach((button) => {
-      const active = button.dataset.topTab === state.activeTopTab;
-      button.classList.toggle('active', active);
+      button.classList.toggle('active', button.dataset.topTab === state.activeTopTab);
     });
-    constructView.classList.toggle('active', state.activeTopTab === 'construct');
-    implementView.classList.toggle('active', state.activeTopTab === 'implement');
+    createView.classList.toggle('active', state.activeTopTab === 'create');
+    previewView.classList.toggle('active', state.activeTopTab === 'preview');
   }
 
   function render() {
-    const story = activeStory();
     renderTopTab();
     renderStoryTabs();
-    renderSuggestions();
-    renderTimeline();
     renderPalette();
-    renderAnalysis();
-    renderImplement();
+    renderStoryboard();
+    renderScenePreview();
     renderInspector();
-
-    storyTitle.value = story?.title || '';
-    storyDescription.value = story?.description || '';
+    renderPreviewTab();
+    renderDrawer();
   }
 
   function countNodes(nodes, type) {
     return nodes.filter((node) => node.type === type).length;
   }
 
-  function escapeHtml(value) {
-    return `${value || ''}`
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
-  }
-
   function initResizableColumns() {
     const root = document.documentElement;
-    const minLeft = 24;
-    const minCenter = 14;
-    const minRight = 28;
+    const minLeft = 14;
+    const minCenter = 30;
+    const minRight = 24;
 
     function startResize(which, event) {
       event.preventDefault();
@@ -859,38 +1045,22 @@
     });
   }
 
-  function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-  }
-
   document.getElementById('create-story').onclick = createStory;
   document.getElementById('save-story').onclick = saveStory;
+  document.getElementById('open-script-drawer').onclick = openDrawer;
+  document.getElementById('close-script-drawer').onclick = closeDrawer;
+  document.getElementById('close-script-drawer-button').onclick = closeDrawer;
+  document.getElementById('analyze-script').onclick = analyzeScript;
   document.getElementById('apply-all-suggestions').onclick = applyAllSuggestions;
   document.getElementById('clear-suggestions').onclick = clearSuggestions;
-  document.getElementById('analyze-script').onclick = analyzeScript;
 
   document.querySelectorAll('[data-top-tab]').forEach((button) => {
     button.onclick = () => {
       state.activeTopTab = button.dataset.topTab;
       renderTopTab();
-      renderImplement();
+      renderPreviewTab();
     };
   });
-
-  storyTitle.oninput = () => {
-    const story = activeStory();
-    if (!story) return;
-    story.title = storyTitle.value;
-    renderStoryTabs();
-    renderImplement();
-  };
-
-  storyDescription.oninput = () => {
-    const story = activeStory();
-    if (!story) return;
-    story.description = storyDescription.value;
-    renderImplement();
-  };
 
   initResizableColumns();
   loadStories();
