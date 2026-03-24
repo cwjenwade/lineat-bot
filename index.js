@@ -750,7 +750,6 @@ function createStoryBubble(card) {
                   }
                 ]
               },
-              ...(avatarNode ? [avatarNode] : []),
               nameplateNode,
               {
                 type: 'box',
@@ -776,7 +775,8 @@ function createStoryBubble(card) {
                     color: '#2D241B'
                   }
                 ]
-              }
+              },
+              ...(avatarNode ? [avatarNode] : [])
             ]
           }
         ]
