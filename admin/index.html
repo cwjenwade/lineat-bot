@@ -3,15 +3,20 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Lineat Story Admin</title>
+  <title>Lineat Admin</title>
   <style>
     :root {
-      --bg: #f5f0e7;
+      --bg: #f3eee4;
       --panel: #fffaf2;
       --ink: #2f2418;
-      --accent: #d98041;
-      --accent-2: #4f7f84;
-      --line: #d9cbb8;
+      --muted: #776756;
+      --line: #ddcfbb;
+      --accent: #d67f41;
+      --accent-2: #557e8e;
+      --accent-3: #7f9e67;
+      --left-width: 34%;
+      --center-width: 18%;
+      --right-width: 48%;
     }
     * { box-sizing: border-box; }
     body {
@@ -19,218 +24,460 @@
       font-family: "PingFang TC", "Noto Sans TC", sans-serif;
       color: var(--ink);
       background:
-        radial-gradient(circle at top left, rgba(217,128,65,.15), transparent 24%),
-        radial-gradient(circle at bottom right, rgba(79,127,132,.16), transparent 28%),
+        radial-gradient(circle at top left, rgba(214,127,65,.16), transparent 24%),
+        radial-gradient(circle at bottom right, rgba(85,126,142,.14), transparent 26%),
         var(--bg);
-    }
-    .layout {
-      display: grid;
-      grid-template-columns: 280px 1fr 360px;
       min-height: 100vh;
     }
-    .sidebar, .inspector {
-      background: rgba(255,250,242,.92);
-      border-right: 1px solid var(--line);
-      backdrop-filter: blur(12px);
-      padding: 20px;
-      overflow: auto;
+    button, input, textarea, select { font: inherit; }
+    .app {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
     }
-    .inspector {
-      border-right: 0;
-      border-left: 1px solid var(--line);
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 22px 12px;
+      border-bottom: 1px solid rgba(47,36,24,.08);
+      background: rgba(255,250,242,.88);
+      backdrop-filter: blur(14px);
+      position: sticky;
+      top: 0;
+      z-index: 20;
     }
-    .canvas-wrap {
-      padding: 18px;
-      overflow: auto;
-      position: relative;
+    .brand {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: .04em;
     }
-    .toolbar, .section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      padding: 16px;
-      margin-bottom: 14px;
-      box-shadow: 0 12px 24px rgba(47,36,24,.06);
+    .top-tabs {
+      display: flex;
+      gap: 10px;
     }
-    h1, h2, h3, p { margin: 0; }
-    h1 { font-size: 24px; margin-bottom: 8px; }
-    h2 { font-size: 16px; margin-bottom: 12px; }
-    p { line-height: 1.5; }
-    button, input, textarea, select {
-      font: inherit;
-    }
-    .button {
-      width: 100%;
+    .top-tab {
       border: 0;
-      border-radius: 14px;
-      padding: 12px 14px;
-      cursor: pointer;
-      background: var(--accent);
-      color: white;
-      font-weight: 700;
-      margin-top: 8px;
-    }
-    .button.secondary {
-      background: var(--accent-2);
-    }
-    .button.ghost {
+      border-radius: 999px;
+      padding: 10px 18px;
       background: #eadfcd;
       color: var(--ink);
-    }
-    .story-item {
-      padding: 12px;
-      border-radius: 14px;
-      background: #f0e7d8;
-      margin-bottom: 10px;
+      font-weight: 800;
       cursor: pointer;
-      border: 1px solid transparent;
     }
-    .story-item.active {
-      border-color: var(--accent);
-      background: #fff4e7;
+    .top-tab.active {
+      background: var(--ink);
+      color: #fff;
     }
-    .canvas {
-      position: relative;
-      min-width: 1400px;
-      min-height: 900px;
-      background:
-        linear-gradient(to right, rgba(47,36,24,.06) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(47,36,24,.06) 1px, transparent 1px),
-        #fcf8f1;
-      background-size: 28px 28px;
-      border-radius: 24px;
+    .subbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 22px;
+      border-bottom: 1px solid rgba(47,36,24,.08);
+      background: rgba(255,250,242,.76);
+      backdrop-filter: blur(12px);
+    }
+    .story-tabs {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      flex: 1;
+    }
+    .story-pill {
       border: 1px solid var(--line);
-    }
-    .edges {
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-    }
-    .node {
-      position: absolute;
-      width: 260px;
-      background: white;
-      border: 2px solid #d9cbb8;
-      border-radius: 18px;
-      box-shadow: 0 12px 24px rgba(47,36,24,.08);
-      overflow: hidden;
-      cursor: grab;
-    }
-    .node.active {
-      border-color: var(--accent);
-      box-shadow: 0 16px 28px rgba(217,128,65,.18);
-    }
-    .node-head {
-      padding: 12px 14px;
-      background: #f5ead9;
-      border-bottom: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 999px;
+      padding: 9px 14px;
+      cursor: pointer;
       font-weight: 700;
     }
-    .node-meta {
-      font-size: 12px;
-      opacity: .72;
-      margin-top: 4px;
+    .story-pill.active {
+      background: #fff1e1;
+      border-color: var(--accent);
+      color: #8d4d1a;
     }
-    .node-body {
-      padding: 12px 14px 14px;
-      font-size: 14px;
-      line-height: 1.45;
-      color: #5a4b3d;
+    .story-create {
+      display: flex;
+      gap: 8px;
+      align-items: center;
     }
-    .field {
+    .story-create input {
+      min-width: 200px;
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 999px;
+      padding: 10px 14px;
+    }
+    .button {
+      border: 0;
+      border-radius: 14px;
+      padding: 10px 14px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .button.primary { background: var(--accent); color: #fff; }
+    .button.secondary { background: var(--accent-2); color: #fff; }
+    .button.soft { background: #ece1d1; color: var(--ink); }
+    .button.success { background: var(--accent-3); color: #fff; }
+    .view { display: none; min-height: 0; flex: 1; }
+    .view.active { display: block; }
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(280px, var(--left-width)) 8px minmax(180px, var(--center-width)) 8px minmax(340px, var(--right-width));
+      min-height: calc(100vh - 122px);
+    }
+    .panel {
+      min-width: 0;
+      overflow: auto;
+      padding: 18px;
+    }
+    .panel-card {
+      background: rgba(255,250,242,.92);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: 0 16px 30px rgba(47,36,24,.06);
+      padding: 16px;
       margin-bottom: 14px;
     }
+    .panel h2, .panel h3, .panel p { margin: 0; }
+    .panel h2 { font-size: 18px; margin-bottom: 10px; }
+    .panel h3 { font-size: 15px; margin-bottom: 8px; }
+    .panel p { line-height: 1.5; color: var(--muted); }
+    .gutter {
+      cursor: col-resize;
+      background: linear-gradient(to right, transparent, rgba(47,36,24,.10), transparent);
+    }
+    .timeline {
+      position: relative;
+      padding-left: 22px;
+    }
+    .timeline::before {
+      content: "";
+      position: absolute;
+      left: 10px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: linear-gradient(#d9b48f, #c0d2b4);
+    }
+    .timeline-card {
+      position: relative;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px 14px 12px;
+      margin-bottom: 14px;
+      box-shadow: 0 10px 24px rgba(47,36,24,.05);
+      cursor: pointer;
+    }
+    .timeline-card::before {
+      content: "";
+      position: absolute;
+      left: -19px;
+      top: 18px;
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      background: #fff;
+      border: 3px solid var(--accent);
+    }
+    .timeline-card.active {
+      border-color: var(--accent);
+      box-shadow: 0 16px 28px rgba(214,127,65,.18);
+    }
+    .timeline-card.dragging { opacity: .5; }
+    .timeline-meta {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .type-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 800;
+      background: #f0e5d5;
+      color: #7b5836;
+    }
+    .timeline-title {
+      font-size: 15px;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .timeline-text {
+      font-size: 13px;
+      color: var(--muted);
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    .timeline-controls {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
+    }
+    .mini-btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: #efe3d3;
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .suggestion-card {
+      border-style: dashed;
+      background: #fbf7ef;
+    }
+    .palette-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .palette-item {
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: #fff;
+      padding: 14px 12px;
+      text-align: center;
+      cursor: pointer;
+      box-shadow: 0 10px 20px rgba(47,36,24,.05);
+    }
+    .palette-item:hover { border-color: var(--accent); }
+    .palette-icon {
+      width: 58px;
+      height: 58px;
+      margin: 0 auto 10px;
+      border-radius: 18px;
+      display: grid;
+      place-items: center;
+      font-size: 28px;
+      font-weight: 800;
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), #f1b36a);
+    }
+    .palette-item[data-type="choice"] .palette-icon {
+      background: linear-gradient(135deg, #5c92a2, #8ec8d2);
+    }
+    .palette-item[data-type="carousel"] .palette-icon {
+      background: linear-gradient(135deg, #7a9f63, #b6d498);
+    }
+    .palette-item[data-type="dialogue"] .palette-icon {
+      background: linear-gradient(135deg, #9367a9, #c7a5da);
+    }
+    .palette-label { font-weight: 800; margin-bottom: 4px; }
+    .palette-desc { font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .section-stack { display: flex; flex-direction: column; gap: 14px; }
+    .field { margin-bottom: 12px; }
     .field label {
       display: block;
-      font-size: 13px;
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 800;
       margin-bottom: 6px;
+      color: #6a5845;
     }
     .field input,
     .field textarea,
     .field select {
       width: 100%;
-      border-radius: 12px;
       border: 1px solid var(--line);
+      border-radius: 14px;
       padding: 10px 12px;
-      background: white;
+      background: #fff;
     }
     .field textarea {
-      min-height: 92px;
+      min-height: 96px;
       resize: vertical;
-    }
-    .inline {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
-    .page-card {
-      border: 1px dashed var(--line);
-      border-radius: 14px;
-      padding: 12px;
-      margin-bottom: 10px;
-      background: #fff;
     }
     .preview-image {
       width: 100%;
-      border-radius: 12px;
+      border-radius: 14px;
       margin-top: 8px;
       border: 1px solid var(--line);
     }
-    .hint {
-      font-size: 12px;
-      color: #756554;
-      margin-top: 6px;
+    .analysis-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+    .stat {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 12px;
+    }
+    .stat strong {
+      display: block;
+      font-size: 22px;
+      margin-bottom: 2px;
+    }
+    .delta-list, .outline-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .delta-item, .outline-item {
+      border-radius: 14px;
+      background: #fff;
+      border: 1px solid var(--line);
+      padding: 10px 12px;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+    .inline-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .empty {
+      border: 1px dashed var(--line);
+      border-radius: 16px;
+      padding: 18px;
+      color: var(--muted);
+      background: rgba(255,255,255,.56);
+      text-align: center;
+    }
+    .implement-wrap {
+      padding: 22px;
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 18px;
+    }
+    .code-block {
+      width: 100%;
+      min-height: 520px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      background: #fff;
+      white-space: pre;
+      overflow: auto;
+    }
+    .hint { font-size: 12px; color: var(--muted); }
+    @media (max-width: 1180px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+      .gutter { display: none; }
+      .implement-wrap { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="layout">
-    <aside class="sidebar">
-      <div class="toolbar">
-        <h1>Lineat Admin</h1>
-        <p>像寫劇本一樣建立模組，並用箭頭查看分支流向。</p>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">Lineat Studio</div>
+      <div class="top-tabs">
+        <button class="top-tab active" data-top-tab="construct">CONStruct</button>
+        <button class="top-tab" data-top-tab="implement">Implement</button>
       </div>
-      <div class="section">
-        <h2>Stories</h2>
-        <div id="story-list"></div>
-        <button class="button" id="create-story">新增故事</button>
+    </header>
+
+    <div class="subbar">
+      <div class="story-tabs" id="story-tabs"></div>
+      <div class="story-create">
+        <input id="new-story-title" placeholder="新增 Story 名稱" />
+        <button class="button primary" id="create-story">新增 Story</button>
+        <button class="button success" id="save-story">儲存</button>
       </div>
-      <div class="section">
-        <h2>新增模組</h2>
-        <button class="button secondary" data-add-node="narrative">敘事圖片模組</button>
-        <button class="button secondary" data-add-node="choice">雙選項分支模組</button>
-        <button class="button secondary" data-add-node="carousel">多頁訊息模組</button>
-        <button class="button secondary" data-add-node="dialogue">對話框模組</button>
+    </div>
+
+    <section class="view active" id="construct-view">
+      <div class="workspace" id="workspace">
+        <aside class="panel">
+          <div class="panel-card">
+            <h2>Suggested Modules</h2>
+            <p>右側貼上劇本並分析後，這裡會出現建議模組。你可以逐一加入，或一次套用到故事軸。</p>
+            <div class="inline-actions">
+              <button class="button secondary" id="apply-all-suggestions">全部加入左側故事軸</button>
+              <button class="button soft" id="clear-suggestions">清空建議</button>
+            </div>
+          </div>
+          <div id="suggestion-list"></div>
+
+          <div class="panel-card">
+            <h2>Story Flow</h2>
+            <p>左欄就是故事順序。由上往下是主線節奏，拖曳卡片可改順序。</p>
+          </div>
+          <div class="timeline" id="timeline"></div>
+        </aside>
+
+        <div class="gutter" data-gutter="left"></div>
+
+        <section class="panel">
+          <div class="panel-card">
+            <h2>Module Palette</h2>
+            <p>點一下小圖示，就會在左側故事軸新增模組。</p>
+            <div class="palette-grid" id="palette"></div>
+          </div>
+          <div class="panel-card">
+            <h2>Current Story</h2>
+            <div class="field">
+              <label for="story-title">Story 名稱</label>
+              <input id="story-title" />
+            </div>
+            <div class="field">
+              <label for="story-description">Story 描述</label>
+              <textarea id="story-description"></textarea>
+            </div>
+            <div class="hint">這些資訊會和模組一起存進資料檔，之後可再接到 LINE 實作層。</div>
+          </div>
+        </section>
+
+        <div class="gutter" data-gutter="right"></div>
+
+        <aside class="panel">
+          <div class="section-stack">
+            <div class="panel-card">
+              <h2>Script Analyzer</h2>
+              <p>把劇本貼進來後按分析。系統會抓出 PIC、選項、對話密度，並在左邊生出建議模組。</p>
+              <div class="field">
+                <label for="script-input">劇本貼上區</label>
+                <textarea id="script-input" style="min-height: 260px;"></textarea>
+              </div>
+              <div class="inline-actions">
+                <button class="button primary" id="analyze-script">分析劇本</button>
+              </div>
+              <div id="analysis-panel"></div>
+            </div>
+
+            <div class="panel-card">
+              <h2>Module Inspector</h2>
+              <div id="node-inspector" class="empty">先從左側選一個模組。</div>
+            </div>
+          </div>
+        </aside>
       </div>
-      <div class="section">
-        <h2>儲存</h2>
-        <button class="button ghost" id="save-story">儲存故事</button>
-      </div>
-    </aside>
-    <main class="canvas-wrap">
-      <div class="canvas" id="canvas">
-        <svg class="edges" id="edges"></svg>
-      </div>
-    </main>
-    <aside class="inspector">
-      <div class="section">
-        <h2>Story Info</h2>
-        <div class="field">
-          <label for="story-title">標題</label>
-          <input id="story-title" />
+    </section>
+
+    <section class="view" id="implement-view">
+      <div class="implement-wrap">
+        <div class="panel-card">
+          <h2>Story JSON</h2>
+          <p>這裡是目前故事的實作資料，可提供給 webhook 或後續編排流程使用。</p>
+          <pre class="code-block" id="implement-json"></pre>
         </div>
-        <div class="field">
-          <label for="story-description">描述</label>
-          <textarea id="story-description"></textarea>
+        <div class="panel-card">
+          <h2>Implementation Summary</h2>
+          <div id="implement-summary"></div>
         </div>
       </div>
-      <div class="section">
-        <h2>Node Inspector</h2>
-        <div id="node-inspector"></div>
-      </div>
-    </aside>
+    </section>
   </div>
+
   <script>
     window.ADMIN_API_BASE = '__ADMIN_API_BASE__';
   </script>

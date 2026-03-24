@@ -7,6 +7,7 @@
     "admin": "node admin.js",
     "start": "node index.js",
     "dev": "node index.js",
+    "test:admin": "node scripts/test_admin_e2e.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -19,5 +20,8 @@
     "express": "^5.2.1",
     "multer": "^2.1.1",
     "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "playwright": "^1.58.2"
   }
 }
