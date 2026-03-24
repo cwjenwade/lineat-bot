@@ -47,6 +47,26 @@ app.post('/webhook', line.middleware(config), (req, res) => {
 const client = new line.Client(config);
 const userSessions = new Map();
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://lineat-bot.onrender.com';
+const RPG_CARD_LAYOUT = {
+  totalHeight: '540px',
+  heroHeight: '378px',
+  bodyHeight: '162px',
+  bodyPaddingTop: '56px',
+  bodyPaddingSide: '20px',
+  leadAvatarSize: '92px',
+  supportAvatarSize: '84px',
+  avatarSideInset: '14px',
+  avatarTop: '332px',
+  leadNameplateStart: '110px',
+  supportNameplateEnd: '104px',
+  nameplateTop: '346px',
+  nameplatePaddingX: '16px',
+  nameplatePaddingY: '10px',
+  leadTextPaddingLeft: '122px',
+  supportTextPaddingRight: '114px',
+  narratorTagTop: '18px',
+  narratorTagStart: '18px'
+};
 const previewNodes = JSON.stringify(storyMap);
 const previewStartId = JSON.stringify(storyStartId);
 const previewRoleIcons = JSON.stringify({
@@ -662,27 +682,29 @@ function createStoryBubble(card) {
     ? {
         type: 'image',
         url: roleIconUrl,
-        size: 'xxl',
+        size: roleMeta.placement === 'left' ? RPG_CARD_LAYOUT.leadAvatarSize : RPG_CARD_LAYOUT.supportAvatarSize,
         aspectRatio: '1:1',
         position: 'absolute',
-        offsetBottom: '14px',
-        ...(isLeft ? { offsetStart: '14px' } : { offsetEnd: '14px' })
+        offsetTop: RPG_CARD_LAYOUT.avatarTop,
+        ...(isLeft ? { offsetStart: RPG_CARD_LAYOUT.avatarSideInset } : { offsetEnd: RPG_CARD_LAYOUT.avatarSideInset })
       }
     : null;
   const nameplateNode = {
     type: 'box',
     layout: 'vertical',
     position: 'absolute',
-    offsetBottom: roleMeta.showAvatar ? '36px' : '16px',
+    offsetTop: roleMeta.showAvatar ? RPG_CARD_LAYOUT.nameplateTop : RPG_CARD_LAYOUT.narratorTagTop,
     backgroundColor: theme.chip,
     cornerRadius: '14px',
-    paddingTop: '10px',
-    paddingBottom: '10px',
-    paddingStart: '16px',
-    paddingEnd: '16px',
+    paddingTop: RPG_CARD_LAYOUT.nameplatePaddingY,
+    paddingBottom: RPG_CARD_LAYOUT.nameplatePaddingY,
+    paddingStart: RPG_CARD_LAYOUT.nameplatePaddingX,
+    paddingEnd: RPG_CARD_LAYOUT.nameplatePaddingX,
     ...(roleMeta.showAvatar
-      ? (isLeft ? { offsetStart: '110px' } : { offsetEnd: '110px' })
-      : { offsetStart: '16px', offsetEnd: '16px' }),
+      ? (isLeft
+          ? { offsetStart: RPG_CARD_LAYOUT.leadNameplateStart }
+          : { offsetEnd: RPG_CARD_LAYOUT.supportNameplateEnd })
+      : { offsetStart: RPG_CARD_LAYOUT.narratorTagStart }),
     contents: [
       {
         type: 'text',
@@ -709,38 +731,51 @@ function createStoryBubble(card) {
           {
             type: 'box',
             layout: 'vertical',
-            height: '380px',
+            height: RPG_CARD_LAYOUT.totalHeight,
             paddingAll: '0px',
             backgroundColor: '#F5EEE3',
             contents: [
               {
-                type: 'image',
-                url: `${publicBaseUrl}/${card.image}`,
-                size: 'full',
-                aspectRatio: '4:5',
-                aspectMode: 'cover'
+                type: 'box',
+                layout: 'vertical',
+                height: RPG_CARD_LAYOUT.heroHeight,
+                paddingAll: '0px',
+                contents: [
+                  {
+                    type: 'image',
+                    url: `${publicBaseUrl}/${card.image}`,
+                    size: 'full',
+                    aspectRatio: '4:5',
+                    aspectMode: 'cover'
+                  }
+                ]
               },
               ...(avatarNode ? [avatarNode] : []),
-              nameplateNode
-            ]
-          },
-          {
-            type: 'box',
-            layout: 'vertical',
-            paddingTop: '22px',
-            paddingBottom: '24px',
-            paddingStart: '20px',
-            paddingEnd: '20px',
-            spacing: 'md',
-            backgroundColor: '#FFFDF8',
-            contents: [
+              nameplateNode,
               {
-                type: 'text',
-                text: card.body || '',
-                wrap: true,
-                size: 'lg',
-                lineSpacing: '6px',
-                color: '#2D241B'
+                type: 'box',
+                layout: 'vertical',
+                height: RPG_CARD_LAYOUT.bodyHeight,
+                position: 'absolute',
+                offsetTop: RPG_CARD_LAYOUT.heroHeight,
+                offsetStart: '0px',
+                offsetEnd: '0px',
+                paddingTop: RPG_CARD_LAYOUT.bodyPaddingTop,
+                paddingBottom: '24px',
+                paddingStart: roleMeta.showAvatar && isLeft ? RPG_CARD_LAYOUT.leadTextPaddingLeft : RPG_CARD_LAYOUT.bodyPaddingSide,
+                paddingEnd: roleMeta.showAvatar && !isLeft ? RPG_CARD_LAYOUT.supportTextPaddingRight : RPG_CARD_LAYOUT.bodyPaddingSide,
+                spacing: 'md',
+                backgroundColor: '#FFFDF8',
+                contents: [
+                  {
+                    type: 'text',
+                    text: card.body || '',
+                    wrap: true,
+                    size: 'lg',
+                    lineSpacing: '6px',
+                    color: '#2D241B'
+                  }
+                ]
               }
             ]
           }
