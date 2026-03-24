@@ -1,6 +1,20 @@
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const sharp = require('sharp');
 const { chromium } = require('playwright');
 
 async function run() {
+  const tempImagePath = path.join(os.tmpdir(), 'lineat-admin-test.png');
+  await sharp({
+    create: {
+      width: 64,
+      height: 64,
+      channels: 3,
+      background: { r: 210, g: 160, b: 110 }
+    }
+  }).png().toFile(tempImagePath);
+
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1100 } });
 
@@ -49,15 +63,50 @@ async function run() {
     await page.click('#create-story');
     await page.locator('.story-pill.active').filter({ hasText: 'E2E Story' }).waitFor();
 
+    const characterCards = page.locator('#character-library .character-card');
+    if (await characterCards.count() < 2) {
+      throw new Error('Expected default characters to exist');
+    }
+
+    const bearCard = characterCards.nth(0);
+    const lilyCard = characterCards.nth(1);
+    await bearCard.locator('input[type="file"]').setInputFiles(tempImagePath);
+    await lilyCard.locator('input[type="file"]').setInputFiles(tempImagePath);
+    await page.waitForSelector('#character-library .character-card img.character-avatar');
+
     const beforeTimelineCount = await page.locator('#storyboard .story-node').count();
-    await page.click('.palette-item[data-type="choice"]');
+    await page.click('.palette-item[data-type="dialogue"]');
     const afterTimelineCount = await page.locator('#storyboard .story-node').count();
 
     if (afterTimelineCount !== beforeTimelineCount + 1) {
       throw new Error(`Expected timeline count ${beforeTimelineCount + 1}, got ${afterTimelineCount}`);
     }
 
-    await page.waitForSelector('#scene-preview .line-card');
+    await page.waitForSelector('#scene-preview .rpg-scene');
+    await page.locator('#node-inspector input[type="file"]').nth(0).setInputFiles(tempImagePath);
+    await page.waitForTimeout(400);
+
+    const hasFixedCharacters = await page.evaluate(() => {
+      return Boolean(
+        document.querySelector('#scene-preview .rpg-avatar.left-lower') &&
+        document.querySelector('#scene-preview .rpg-avatar.right-lower') &&
+        document.querySelector('#scene-preview .rpg-nameplate')
+      );
+    });
+    if (!hasFixedCharacters) {
+      throw new Error('RPG dialogue preview missing fixed left/right character positions');
+    }
+
+    await page.click('.palette-item[data-type="carousel"]');
+    await page.waitForSelector('#scene-preview .line-carousel');
+    await page.locator('#node-inspector input[type="file"]').nth(0).setInputFiles(tempImagePath);
+    const hasLargeCarouselImage = await page.evaluate(() => {
+      const image = document.querySelector('#scene-preview .line-carousel .rpg-scene-image');
+      return Boolean(image);
+    });
+    if (!hasLargeCarouselImage) {
+      throw new Error('Carousel preview missing large image scene');
+    }
 
     const script = `《熊熊測試故事》
 
@@ -98,9 +147,23 @@ PIC2
       throw new Error('Preview chat did not render any scenes');
     }
 
+    const previewHasRpg = await page.evaluate(() => {
+      return Boolean(
+        document.querySelector('#preview-chat .rpg-avatar.left-lower') &&
+        document.querySelector('#preview-chat .rpg-avatar.right-lower') &&
+        document.querySelector('#preview-chat .line-carousel .rpg-scene-image')
+      );
+    });
+    if (!previewHasRpg) {
+      throw new Error('Preview tab missing RPG dialogue or large-image carousel rendering');
+    }
+
     console.log(JSON.stringify({
       storyCreated: true,
       moduleAdded: true,
+      charactersConfigured: true,
+      rpgDialogueReady: true,
+      largeCarouselReady: true,
       suggestionsApplied: true,
       resized: true,
       previewLoaded: true

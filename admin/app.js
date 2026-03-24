@@ -51,6 +51,7 @@
 
   const storyTabs = document.getElementById('story-tabs');
   const newStoryTitle = document.getElementById('new-story-title');
+  const characterLibrary = document.getElementById('character-library');
   const palette = document.getElementById('palette');
   const storyboard = document.getElementById('storyboard');
   const storyboardMeta = document.getElementById('storyboard-meta');
@@ -91,6 +92,42 @@
 
   function nodeTypeInfo(type) {
     return moduleCatalog.find((item) => item.type === type) || moduleCatalog[0];
+  }
+
+  function defaultCharacters() {
+    return [
+      {
+        id: 'char-bear',
+        name: '熊熊',
+        avatar: '',
+        placement: 'left-lower',
+        role: 'lead'
+      },
+      {
+        id: 'char-lily',
+        name: '莉莉',
+        avatar: '',
+        placement: 'right-lower',
+        role: 'support'
+      }
+    ];
+  }
+
+  function ensureStoryDefaults(story) {
+    story.characters ||= defaultCharacters().map((character) => ({ ...character }));
+
+    const defaults = defaultCharacters();
+    defaults.forEach((preset) => {
+      let found = story.characters.find((character) => character.id === preset.id);
+      if (!found) {
+        story.characters.push({ ...preset });
+        found = story.characters.find((character) => character.id === preset.id);
+      }
+      found.name ||= preset.name;
+      found.avatar ||= '';
+      found.placement ||= preset.placement;
+      found.role ||= preset.role;
+    });
   }
 
   function activeStory() {
@@ -137,10 +174,16 @@
   }
 
   function ensureNodeDefaults(node) {
+    const story = activeStory();
+    const defaultSpeakerId = story?.characters?.[0]?.id || '';
+    const defaultCompanionId = story?.characters?.[1]?.id || '';
+
     node.id ||= uid('node');
     node.type ||= 'narrative';
     node.title ||= `新的${nodeTypeInfo(node.type).label}`;
     node.speaker ||= '';
+    node.speakerCharacterId ||= inferCharacterIdFromSpeaker(node.speaker);
+    node.companionCharacterId ||= '';
     node.text ||= '';
     node.image ||= '';
     node.nextNodeId ||= '';
@@ -164,9 +207,16 @@
       node.pages.forEach((page, index) => {
         page.title ||= `第 ${index + 1} 頁`;
         page.speaker ||= '旁白';
+        page.speakerCharacterId ||= inferCharacterIdFromSpeaker(page.speaker);
+        page.companionCharacterId ||= '';
         page.text ||= '';
         page.image ||= '';
       });
+    }
+
+    if (node.type === 'dialogue') {
+      node.speakerCharacterId ||= defaultSpeakerId;
+      node.companionCharacterId ||= defaultCompanionId;
     }
   }
 
@@ -200,7 +250,11 @@
         id: uid('carousel'),
         type,
         title: '新的多頁訊息',
-        pages: [emptyPage(1)],
+        pages: [{
+          ...emptyPage(1),
+          speakerCharacterId: '',
+          companionCharacterId: ''
+        }],
         nextNodeId: ''
       };
     }
@@ -210,7 +264,9 @@
         id: uid('dialogue'),
         type,
         title: '新的對話框',
-        speaker: '角色',
+        speaker: '熊熊',
+        speakerCharacterId: 'char-bear',
+        companionCharacterId: 'char-lily',
         text: '在這裡輸入角色對話。',
         image: '',
         nextNodeId: ''
@@ -245,12 +301,47 @@
     return target ? target.title : '未連接';
   }
 
+  function characterById(characterId) {
+    const story = activeStory();
+    return story?.characters?.find((character) => character.id === characterId) || null;
+  }
+
+  function inferCharacterIdFromSpeaker(speaker = '') {
+    const story = activeStory();
+    const normalized = `${speaker}`.replace(/[（(].*?[）)]/g, '').trim();
+    return story?.characters?.find((character) => normalized.includes(character.name) || character.name.includes(normalized))?.id || '';
+  }
+
+  function characterPlacement(characterId) {
+    return characterById(characterId)?.placement || 'left-lower';
+  }
+
+  function characterLabel(characterId, fallback = '角色') {
+    return characterById(characterId)?.name || fallback;
+  }
+
+  function roleSelect(value, onChange, options = {}) {
+    const story = activeStory();
+    const select = document.createElement('select');
+    const allowEmpty = options.allowEmpty !== false;
+    select.innerHTML = `${allowEmpty ? '<option value="">未指定</option>' : ''}${(story?.characters || []).map((character) => `<option value="${character.id}">${escapeHtml(character.name)}</option>`).join('')}`;
+    select.value = value || '';
+    select.onchange = (event) => onChange(event.target.value);
+    return select;
+  }
+
+  function roleNameplateClass(characterId) {
+    const placement = characterPlacement(characterId);
+    return placement.startsWith('right') ? 'right' : 'left';
+  }
+
   async function loadStories() {
     const { stories } = await api('/stories');
     state.stories = stories.map((story) => ({
       ...story,
       nodes: (story.nodes || []).map((node) => ({ ...node }))
     }));
+    state.stories.forEach(ensureStoryDefaults);
     if (state.stories[0]) {
       state.activeStoryId = state.stories[0].id;
       state.activeNodeId = state.stories[0].nodes[0]?.id || null;
@@ -264,6 +355,7 @@
       method: 'POST',
       body: JSON.stringify({ title })
     });
+    ensureStoryDefaults(story);
     state.stories.push(story);
     state.activeStoryId = story.id;
     state.activeNodeId = story.nodes[0]?.id || null;
@@ -274,6 +366,7 @@
   async function saveStory() {
     const story = activeStory();
     if (!story) return;
+    ensureStoryDefaults(story);
 
     const payload = {
       ...story,
@@ -352,7 +445,8 @@
       method: 'POST',
       body: JSON.stringify({
         script,
-        existingNodes: story?.nodes || []
+        existingNodes: story?.nodes || [],
+        characters: story?.characters || []
       })
     });
 
@@ -426,6 +520,95 @@
       button.onclick = () => addNode(module.type);
       palette.appendChild(button);
     });
+  }
+
+  function renderCharacterLibrary() {
+    characterLibrary.innerHTML = '';
+    const story = activeStory();
+    if (!story) {
+      characterLibrary.innerHTML = '<div class="empty">先建立 Story 才能設定角色。</div>';
+      return;
+    }
+
+    ensureStoryDefaults(story);
+
+    story.characters.forEach((character) => {
+      const card = document.createElement('div');
+      card.className = 'character-card';
+      const avatarHtml = character.avatar
+        ? `<img class="character-avatar" src="${escapeHtml(character.avatar)}" alt="">`
+        : `<div class="character-avatar placeholder">${escapeHtml(character.name.slice(0, 1) || '角')}</div>`;
+      card.innerHTML = `
+        ${avatarHtml}
+        <div>
+          <div class="character-title">${escapeHtml(character.name)}</div>
+          <div class="character-meta">
+            <span class="meta-pill">${character.role === 'lead' ? '主角' : '配角'}</span>
+            <span class="meta-pill">${character.placement === 'left-lower' ? '左下' : character.placement === 'right-lower' ? '右下' : character.placement}</span>
+          </div>
+        </div>
+      `;
+
+      const controls = document.createElement('div');
+      controls.className = 'field';
+      const content = card.children[1];
+
+      content.appendChild(field('角色名稱', textInput(character.name, (value) => {
+        character.name = value || '新角色';
+        render();
+      })));
+
+      const roleSelectEl = document.createElement('select');
+      roleSelectEl.innerHTML = `
+        <option value="lead">主角</option>
+        <option value="support">配角</option>
+      `;
+      roleSelectEl.value = character.role || 'support';
+      roleSelectEl.onchange = (event) => {
+        character.role = event.target.value;
+        if (character.role === 'lead') {
+          character.placement = 'left-lower';
+        } else if (character.placement === 'left-lower' && character.id !== 'char-bear') {
+          character.placement = 'right-lower';
+        }
+        render();
+      };
+      content.appendChild(field('角色定位', roleSelectEl));
+
+      const placementSelect = document.createElement('select');
+      placementSelect.innerHTML = `
+        <option value="left-lower">左側下三分之二</option>
+        <option value="right-lower">右側下三分之二</option>
+        <option value="left-upper">左側上方</option>
+        <option value="right-upper">右側上方</option>
+      `;
+      placementSelect.value = character.placement || 'right-lower';
+      placementSelect.onchange = (event) => {
+        character.placement = event.target.value;
+        render();
+      };
+      content.appendChild(field('站位規則', placementSelect));
+
+      content.appendChild(field('角色頭像', uploadField(character.avatar, (url) => {
+        character.avatar = url;
+        render();
+      })));
+      characterLibrary.appendChild(card);
+    });
+  }
+
+  function addCharacter() {
+    const story = activeStory();
+    if (!story) return;
+    ensureStoryDefaults(story);
+    story.characters.push({
+      id: uid('char'),
+      name: `角色 ${story.characters.length + 1}`,
+      avatar: '',
+      placement: 'right-lower',
+      role: 'support'
+    });
+    render();
   }
 
   function renderStoryboardMeta(story) {
@@ -764,15 +947,24 @@
           page.title = value;
           render();
         })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁角色`, textInput(page.speaker, (value) => {
+        pageCard.appendChild(field(`第 ${index + 1} 頁角色名稱`, textInput(page.speaker, (value) => {
           page.speaker = value;
+          render();
+        })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁主講角色`, roleSelect(page.speakerCharacterId, (value) => {
+          page.speakerCharacterId = value;
+          page.speaker = characterLabel(value, page.speaker || '旁白');
+          render();
+        })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁陪襯角色`, roleSelect(page.companionCharacterId, (value) => {
+          page.companionCharacterId = value;
           render();
         })));
         pageCard.appendChild(field(`第 ${index + 1} 頁文字`, textArea(page.text, (value) => {
           page.text = value;
           render();
         })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁底圖`, uploadField(page.image, (url) => {
+        pageCard.appendChild(field(`第 ${index + 1} 頁大圖`, uploadField(page.image, (url) => {
           page.image = url;
           render();
         })));
@@ -801,15 +993,27 @@
         render();
       })));
     } else {
-      editor.appendChild(field('角色名稱', textInput(node.speaker, (value) => {
-        node.speaker = value;
-        render();
-      })));
+      if (node.type === 'dialogue') {
+        editor.appendChild(field('主講角色', roleSelect(node.speakerCharacterId, (value) => {
+          node.speakerCharacterId = value;
+          node.speaker = characterLabel(value, node.speaker || '角色');
+          render();
+        }, { allowEmpty: false })));
+        editor.appendChild(field('陪襯角色', roleSelect(node.companionCharacterId, (value) => {
+          node.companionCharacterId = value;
+          render();
+        })));
+      } else {
+        editor.appendChild(field('角色名稱', textInput(node.speaker, (value) => {
+          node.speaker = value;
+          render();
+        })));
+      }
       editor.appendChild(field('文字內容', textArea(node.text, (value) => {
         node.text = value;
         render();
       })));
-      editor.appendChild(field(node.type === 'fullscreen' ? '滿版圖' : '圖片', uploadField(node.image, (url) => {
+      editor.appendChild(field(node.type === 'fullscreen' ? '滿版圖' : node.type === 'dialogue' ? '場景大圖' : '圖片', uploadField(node.image, (url) => {
         node.image = url;
         render();
       })));
@@ -822,33 +1026,73 @@
     nodeInspector.appendChild(editor);
   }
 
+  function buildAvatar(characterId, visibleName, forceNameplate) {
+    if (!characterId) return '';
+    const character = characterById(characterId);
+    if (!character) return '';
+    const avatar = character.avatar
+      ? `<img src="${escapeHtml(character.avatar)}" alt="${escapeHtml(character.name)}">`
+      : `<div class="rpg-avatar-fallback">${escapeHtml(character.name.slice(0, 1) || '角')}</div>`;
+    const showNameplate = forceNameplate || false;
+    const nameplate = showNameplate
+      ? `<div class="rpg-nameplate ${roleNameplateClass(characterId)}">${escapeHtml(visibleName || character.name)}</div>`
+      : '';
+    return `
+      <div class="rpg-avatar ${escapeHtml(character.placement)}">
+        ${avatar}
+        ${nameplate}
+      </div>
+    `;
+  }
+
+  function buildRpgScene({ image, speakerCharacterId, companionCharacterId, speaker, text, metaLabel }) {
+    const effectiveSpeakerId = speakerCharacterId || inferCharacterIdFromSpeaker(speaker);
+    const scene = document.createElement('article');
+    scene.className = 'rpg-scene';
+    scene.innerHTML = `
+      <div class="rpg-stage">
+        ${image ? `<img class="rpg-scene-image" src="${escapeHtml(image)}" alt="">` : `<div class="rpg-scene-image"></div>`}
+        <div class="rpg-cast">
+          ${buildAvatar(effectiveSpeakerId, speaker || characterLabel(effectiveSpeakerId, '角色'), true)}
+          ${companionCharacterId && companionCharacterId !== effectiveSpeakerId ? buildAvatar(companionCharacterId, '', false) : ''}
+        </div>
+      </div>
+      <div class="rpg-dialogue">
+        <div class="rpg-dialogue-text">${escapeHtml(text || '')}</div>
+        <div class="rpg-dialogue-meta">
+          ${metaLabel ? `<span class="rpg-meta-pill">${escapeHtml(metaLabel)}</span>` : ''}
+        </div>
+      </div>
+    `;
+    return scene;
+  }
+
   function buildNodePreview(node) {
     ensureNodeDefaults(node);
 
     if (node.type === 'dialogue') {
-      const bubble = document.createElement('div');
-      bubble.className = 'line-bubble';
-      bubble.innerHTML = `
-        <span class="line-label">${escapeHtml(node.speaker || '角色')}</span>
-        <div class="line-text">${escapeHtml(node.text)}</div>
-      `;
-      return bubble;
+      return buildRpgScene({
+        image: node.image,
+        speakerCharacterId: node.speakerCharacterId,
+        companionCharacterId: node.companionCharacterId,
+        speaker: node.speaker || characterLabel(node.speakerCharacterId, '角色'),
+        text: node.text,
+        metaLabel: 'RPG 對話'
+      });
     }
 
     if (node.type === 'carousel') {
       const wrap = document.createElement('div');
       wrap.className = 'line-carousel';
       node.pages.forEach((page) => {
-        const pageEl = document.createElement('article');
-        pageEl.className = 'line-page';
-        pageEl.innerHTML = `
-          ${page.image ? `<img class="line-page-image" src="${escapeHtml(page.image)}" alt="">` : ''}
-          <div class="line-page-body">
-            <div class="line-page-title">${escapeHtml(page.title || '多頁卡片')}</div>
-            <span class="line-label">${escapeHtml(page.speaker || '旁白')}</span>
-            <div class="line-text">${escapeHtml(page.text || '')}</div>
-          </div>
-        `;
+        const pageEl = buildRpgScene({
+          image: page.image,
+          speakerCharacterId: page.speakerCharacterId,
+          companionCharacterId: page.companionCharacterId,
+          speaker: page.speaker || characterLabel(page.speakerCharacterId, '旁白'),
+          text: page.text,
+          metaLabel: page.title || '多頁訊息'
+        });
         wrap.appendChild(pageEl);
       });
       return wrap;
@@ -958,6 +1202,7 @@
   function render() {
     renderTopTab();
     renderStoryTabs();
+    renderCharacterLibrary();
     renderPalette();
     renderStoryboard();
     renderScenePreview();
@@ -1047,6 +1292,7 @@
 
   document.getElementById('create-story').onclick = createStory;
   document.getElementById('save-story').onclick = saveStory;
+  document.getElementById('add-character').onclick = addCharacter;
   document.getElementById('open-script-drawer').onclick = openDrawer;
   document.getElementById('close-script-drawer').onclick = closeDrawer;
   document.getElementById('close-script-drawer-button').onclick = closeDrawer;
