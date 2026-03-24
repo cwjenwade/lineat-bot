@@ -60,8 +60,9 @@ const RPG_CARD_LAYOUT = {
   leadNameplateStart: '110px',
   supportNameplateEnd: '104px',
   nameplateTop: '346px',
-  nameplatePaddingX: '16px',
-  nameplatePaddingY: '10px',
+  nameplatePaddingX: '22px',
+  nameplatePaddingY: '12px',
+  nameplateFontSize: 'lg',
   leadTextPaddingLeft: '122px',
   supportTextPaddingRight: '114px',
   narratorTagTop: '18px',
@@ -70,7 +71,7 @@ const RPG_CARD_LAYOUT = {
 const previewNodes = JSON.stringify(storyMap);
 const previewStartId = JSON.stringify(storyStartId);
 const previewRoleIcons = JSON.stringify({
-  bear: '/public/story/01/roles/bear.png',
+  bear: '/public/story/01/bhead001.png',
   'inner-bear': '/public/story/01/roles/inner-bear.png',
   narrator: '/public/story/01/roles/narrator.png',
   lily: '/public/story/01/roles/lily.png',
@@ -710,7 +711,7 @@ function createStoryBubble(card) {
         type: 'text',
         text: roleMeta.label,
         weight: 'bold',
-        size: 'md',
+        size: RPG_CARD_LAYOUT.nameplateFontSize,
         align: 'center',
         color: '#FFFFFF',
         wrap: false
@@ -771,6 +772,7 @@ function createStoryBubble(card) {
                     text: card.body || '',
                     wrap: true,
                     size: 'lg',
+                    align: 'center',
                     lineSpacing: '6px',
                     color: '#2D241B'
                   }
@@ -790,7 +792,7 @@ function getRoleCardMeta(title) {
     return { label: '熊熊', iconPath: '/public/story/01/roles/inner-bear.png', placement: 'left', showAvatar: true };
   }
   if (title.includes('熊熊')) {
-    return { label: '熊熊', iconPath: '/public/story/01/roles/bear.png', placement: 'left', showAvatar: true };
+    return { label: '熊熊', iconPath: '/public/story/01/bhead001.png', placement: 'left', showAvatar: true };
   }
   if (title.includes('莉莉')) {
     return { label: '莉莉', iconPath: '/public/story/01/roles/lily.png', placement: 'right', showAvatar: true };

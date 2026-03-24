@@ -99,7 +99,7 @@
       {
         id: 'char-bear',
         name: '熊熊',
-        avatar: '',
+        avatar: '/public/story/01/bhead001.png',
         placement: 'left-lower',
         role: 'lead'
       },
@@ -169,7 +169,10 @@
       title: `第 ${index} 頁`,
       speaker: '旁白',
       text: '',
-      image: ''
+      image: '',
+      fontFamily: 'default',
+      textSize: 'lg',
+      nameplateSize: 'lg'
     };
   }
 
@@ -187,6 +190,9 @@
     node.text ||= '';
     node.image ||= '';
     node.nextNodeId ||= '';
+    node.fontFamily ||= 'default';
+    node.textSize ||= 'lg';
+    node.nameplateSize ||= 'lg';
 
     if (node.type === 'choice') {
       node.optionA ||= { label: '選項 A', feedback: '', nextNodeId: '' };
@@ -211,6 +217,9 @@
         page.companionCharacterId ||= '';
         page.text ||= '';
         page.image ||= '';
+        page.fontFamily ||= 'default';
+        page.textSize ||= 'lg';
+        page.nameplateSize ||= 'lg';
       });
     }
 
@@ -269,6 +278,9 @@
         companionCharacterId: 'char-lily',
         text: '在這裡輸入角色對話。',
         image: '',
+        fontFamily: 'default',
+        textSize: 'lg',
+        nameplateSize: 'lg',
         nextNodeId: ''
       };
     }
@@ -333,6 +345,62 @@
   function roleNameplateClass(characterId) {
     const placement = characterPlacement(characterId);
     return placement.startsWith('right') ? 'right' : 'left';
+  }
+
+  function fontFamilySelect(value, onChange) {
+    const select = document.createElement('select');
+    select.innerHTML = `
+      <option value="default">LINE 預設</option>
+      <option value="handwritten">手寫感</option>
+      <option value="serif">襯線</option>
+      <option value="rounded">圓體感</option>
+    `;
+    select.value = value || 'default';
+    select.onchange = (event) => onChange(event.target.value);
+    return select;
+  }
+
+  function textSizeSelect(value, onChange) {
+    const select = document.createElement('select');
+    select.innerHTML = `
+      <option value="md">中</option>
+      <option value="lg">大</option>
+      <option value="xl">特大</option>
+    `;
+    select.value = value || 'lg';
+    select.onchange = (event) => onChange(event.target.value);
+    return select;
+  }
+
+  function nameplateSizeSelect(value, onChange) {
+    const select = document.createElement('select');
+    select.innerHTML = `
+      <option value="md">中</option>
+      <option value="lg">大</option>
+      <option value="xl">特大</option>
+    `;
+    select.value = value || 'lg';
+    select.onchange = (event) => onChange(event.target.value);
+    return select;
+  }
+
+  function previewFontFamily(fontFamily) {
+    if (fontFamily === 'handwritten') return '"DFKai-SB", "Klee One", "PingFang TC", cursive';
+    if (fontFamily === 'serif') return '"Songti TC", "Noto Serif TC", serif';
+    if (fontFamily === 'rounded') return '"Arial Rounded MT Bold", "PingFang TC", sans-serif';
+    return '"PingFang TC", "Noto Sans TC", sans-serif';
+  }
+
+  function previewTextSize(size) {
+    if (size === 'md') return '18px';
+    if (size === 'xl') return '24px';
+    return '20px';
+  }
+
+  function previewNameplateSize(size) {
+    if (size === 'md') return { fontSize: '15px', minWidth: '124px', padding: '10px 18px' };
+    if (size === 'xl') return { fontSize: '19px', minWidth: '172px', padding: '14px 26px' };
+    return { fontSize: '17px', minWidth: '148px', padding: '12px 22px' };
   }
 
   async function loadStories() {
@@ -964,6 +1032,18 @@
           page.text = value;
           render();
         })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁字體`, fontFamilySelect(page.fontFamily, (value) => {
+          page.fontFamily = value;
+          render();
+        })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁字級`, textSizeSelect(page.textSize, (value) => {
+          page.textSize = value;
+          render();
+        })));
+        pageCard.appendChild(field(`第 ${index + 1} 頁姓名牌大小`, nameplateSizeSelect(page.nameplateSize, (value) => {
+          page.nameplateSize = value;
+          render();
+        })));
         pageCard.appendChild(field(`第 ${index + 1} 頁大圖`, uploadField(page.image, (url) => {
           page.image = url;
           render();
@@ -1013,6 +1093,18 @@
         node.text = value;
         render();
       })));
+      editor.appendChild(field('字體', fontFamilySelect(node.fontFamily, (value) => {
+        node.fontFamily = value;
+        render();
+      })));
+      editor.appendChild(field('字級', textSizeSelect(node.textSize, (value) => {
+        node.textSize = value;
+        render();
+      })));
+      editor.appendChild(field('姓名牌大小', nameplateSizeSelect(node.nameplateSize, (value) => {
+        node.nameplateSize = value;
+        render();
+      })));
       editor.appendChild(field(node.type === 'fullscreen' ? '滿版圖' : node.type === 'dialogue' ? '場景大圖' : '圖片', uploadField(node.image, (url) => {
         node.image = url;
         render();
@@ -1026,7 +1118,7 @@
     nodeInspector.appendChild(editor);
   }
 
-  function buildAvatar(characterId, visibleName, forceNameplate) {
+  function buildAvatar(characterId, visibleName, forceNameplate, nameplateSize = 'lg') {
     if (!characterId) return '';
     const character = characterById(characterId);
     if (!character) return '';
@@ -1034,8 +1126,9 @@
       ? `<img src="${escapeHtml(character.avatar)}" alt="${escapeHtml(character.name)}">`
       : `<div class="rpg-avatar-fallback">${escapeHtml(character.name.slice(0, 1) || '角')}</div>`;
     const showNameplate = forceNameplate || false;
+    const nameplatePreset = previewNameplateSize(nameplateSize);
     const nameplate = showNameplate
-      ? `<div class="rpg-nameplate ${roleNameplateClass(characterId)}">${escapeHtml(visibleName || character.name)}</div>`
+      ? `<div class="rpg-nameplate ${roleNameplateClass(characterId)}" style="font-size:${nameplatePreset.fontSize};min-width:${nameplatePreset.minWidth};padding:${nameplatePreset.padding};">${escapeHtml(visibleName || character.name)}</div>`
       : '';
     return `
       <div class="rpg-avatar ${escapeHtml(character.placement)}">
@@ -1045,20 +1138,21 @@
     `;
   }
 
-  function buildRpgScene({ image, speakerCharacterId, companionCharacterId, speaker, text, metaLabel }) {
+  function buildRpgScene({ image, speakerCharacterId, companionCharacterId, speaker, text, metaLabel, fontFamily, textSize, nameplateSize }) {
     const effectiveSpeakerId = speakerCharacterId || inferCharacterIdFromSpeaker(speaker);
+    const dialogueStyle = `font-family:${previewFontFamily(fontFamily)};font-size:${previewTextSize(textSize)};text-align:center;display:flex;align-items:center;justify-content:center;min-height:118px;`;
     const scene = document.createElement('article');
     scene.className = 'rpg-scene';
     scene.innerHTML = `
       <div class="rpg-stage">
         ${image ? `<img class="rpg-scene-image" src="${escapeHtml(image)}" alt="">` : `<div class="rpg-scene-image"></div>`}
         <div class="rpg-cast">
-          ${buildAvatar(effectiveSpeakerId, speaker || characterLabel(effectiveSpeakerId, '角色'), true)}
-          ${companionCharacterId && companionCharacterId !== effectiveSpeakerId ? buildAvatar(companionCharacterId, '', false) : ''}
+          ${buildAvatar(effectiveSpeakerId, speaker || characterLabel(effectiveSpeakerId, '角色'), true, nameplateSize)}
+          ${companionCharacterId && companionCharacterId !== effectiveSpeakerId ? buildAvatar(companionCharacterId, '', false, nameplateSize) : ''}
         </div>
       </div>
       <div class="rpg-dialogue">
-        <div class="rpg-dialogue-text">${escapeHtml(text || '')}</div>
+        <div class="rpg-dialogue-text" style="${dialogueStyle}">${escapeHtml(text || '')}</div>
         <div class="rpg-dialogue-meta">
           ${metaLabel ? `<span class="rpg-meta-pill">${escapeHtml(metaLabel)}</span>` : ''}
         </div>
@@ -1077,7 +1171,10 @@
         companionCharacterId: node.companionCharacterId,
         speaker: node.speaker || characterLabel(node.speakerCharacterId, '角色'),
         text: node.text,
-        metaLabel: 'RPG 對話'
+        metaLabel: 'RPG 對話',
+        fontFamily: node.fontFamily,
+        textSize: node.textSize,
+        nameplateSize: node.nameplateSize
       });
     }
 
@@ -1091,7 +1188,10 @@
           companionCharacterId: page.companionCharacterId,
           speaker: page.speaker || characterLabel(page.speakerCharacterId, '旁白'),
           text: page.text,
-          metaLabel: page.title || '多頁訊息'
+          metaLabel: page.title || '多頁訊息',
+          fontFamily: page.fontFamily,
+          textSize: page.textSize,
+          nameplateSize: page.nameplateSize
         });
         wrap.appendChild(pageEl);
       });

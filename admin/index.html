@@ -657,6 +657,7 @@
       align-items: center;
       gap: 8px;
       pointer-events: none;
+      z-index: 3;
     }
 
     .rpg-avatar img,
@@ -702,15 +703,17 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 120px;
-      padding: 10px 18px;
+      min-width: 148px;
+      padding: 12px 22px;
       border-radius: 18px;
       background: rgba(78, 84, 97, 0.92);
       color: #fff;
-      font-size: 16px;
+      font-size: 17px;
       font-weight: 900;
       letter-spacing: 0.08em;
       box-shadow: 0 10px 20px rgba(47, 36, 24, 0.14);
+      position: relative;
+      z-index: 4;
     }
 
     .rpg-nameplate.right {
@@ -730,6 +733,11 @@
       letter-spacing: 0.08em;
       white-space: pre-wrap;
       color: #4d4b4a;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 118px;
     }
 
     .rpg-dialogue-meta {
