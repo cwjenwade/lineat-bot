@@ -654,63 +654,93 @@ function createStoryCarousel(cards) {
 }
 
 function createStoryBubble(card) {
-  const roleIconUrl = `${publicBaseUrl}${getRoleIconPath(card.title)}`;
+  const roleMeta = getRoleCardMeta(card.title);
+  const roleIconUrl = `${publicBaseUrl}${roleMeta.iconPath}`;
   const theme = getRoleThemeInfo(card.title);
+  const isLeft = roleMeta.placement === 'left';
+  const avatarNode = roleMeta.showAvatar
+    ? {
+        type: 'image',
+        url: roleIconUrl,
+        size: 'xxl',
+        aspectRatio: '1:1',
+        position: 'absolute',
+        offsetBottom: '14px',
+        ...(isLeft ? { offsetStart: '14px' } : { offsetEnd: '14px' })
+      }
+    : null;
+  const nameplateNode = {
+    type: 'box',
+    layout: 'vertical',
+    position: 'absolute',
+    offsetBottom: roleMeta.showAvatar ? '36px' : '16px',
+    backgroundColor: theme.chip,
+    cornerRadius: '14px',
+    paddingTop: '10px',
+    paddingBottom: '10px',
+    paddingStart: '16px',
+    paddingEnd: '16px',
+    ...(roleMeta.showAvatar
+      ? (isLeft ? { offsetStart: '110px' } : { offsetEnd: '110px' })
+      : { offsetStart: '16px', offsetEnd: '16px' }),
+    contents: [
+      {
+        type: 'text',
+        text: roleMeta.label,
+        weight: 'bold',
+        size: 'md',
+        align: 'center',
+        color: '#FFFFFF',
+        wrap: false
+      }
+    ]
+  };
   return {
     type: 'flex',
     altText: card.title,
     contents: {
       type: 'bubble',
-      hero: {
-        type: 'image',
-        url: `${publicBaseUrl}/${card.image}`,
-        size: 'full',
-        aspectRatio: '1:1',
-        aspectMode: 'cover'
-      },
       body: {
         type: 'box',
         layout: 'vertical',
-        spacing: 'md',
+        paddingAll: '0px',
+        spacing: 'none',
         contents: [
           {
             type: 'box',
             layout: 'vertical',
-            backgroundColor: theme.border,
-            cornerRadius: '12px',
-            paddingAll: '8px',
+            height: '380px',
+            paddingAll: '0px',
+            backgroundColor: '#F5EEE3',
+            contents: [
+              {
+                type: 'image',
+                url: `${publicBaseUrl}/${card.image}`,
+                size: 'full',
+                aspectRatio: '4:5',
+                aspectMode: 'cover'
+              },
+              ...(avatarNode ? [avatarNode] : []),
+              nameplateNode
+            ]
+          },
+          {
+            type: 'box',
+            layout: 'vertical',
+            paddingTop: '22px',
+            paddingBottom: '24px',
+            paddingStart: '20px',
+            paddingEnd: '20px',
+            spacing: 'md',
+            backgroundColor: '#FFFDF8',
             contents: [
               {
                 type: 'text',
-                text: card.title,
-                weight: 'bold',
-                size: 'sm',
+                text: card.body || '',
                 wrap: true,
-                color: '#FFFFFF'
-              }
-            ]
-          },
-          ...(card.body ? [{
-            type: 'text',
-            text: card.body,
-            wrap: true,
-            size: 'md',
-            color: '#2D241B'
-          }] : []),
-          {
-            type: 'box',
-            layout: 'horizontal',
-            margin: 'md',
-            contents: [
-              {
-                type: 'filler'
-              },
-              {
-                type: 'image',
-                url: roleIconUrl,
-                size: 'sm',
-                aspectMode: 'cover',
-                aspectRatio: '1:1'
+                size: 'lg',
+                lineSpacing: '6px',
+                color: '#2D241B'
               }
             ]
           }
@@ -720,42 +750,73 @@ function createStoryBubble(card) {
   };
 }
 
+function getRoleCardMeta(title) {
+  if (title.includes('熊熊的內心')) {
+    return { label: '熊熊', iconPath: '/public/story/01/roles/inner-bear.png', placement: 'left', showAvatar: true };
+  }
+  if (title.includes('熊熊')) {
+    return { label: '熊熊', iconPath: '/public/story/01/roles/bear.png', placement: 'left', showAvatar: true };
+  }
+  if (title.includes('莉莉')) {
+    return { label: '莉莉', iconPath: '/public/story/01/roles/lily.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('熊爸爸')) {
+    return { label: '熊爸爸', iconPath: '/public/story/01/roles/dad.png', placement: 'left', showAvatar: true };
+  }
+  if (title.includes('熊媽媽')) {
+    return { label: '熊媽媽', iconPath: '/public/story/01/roles/mom.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('河狸')) {
+    return { label: '河狸', iconPath: '/public/story/01/roles/beaver.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('鹿')) {
+    return { label: '鹿先生', iconPath: '/public/story/01/roles/deer.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('貓頭鷹')) {
+    return { label: '貓頭鷹', iconPath: '/public/story/01/roles/owl.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('蜜蜂')) {
+    return { label: '蜜蜂', iconPath: '/public/story/01/roles/bee.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('夢境')) {
+    return { label: '夢境', iconPath: '/public/story/01/roles/dream.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('好友')) {
+    return { label: '好友們', iconPath: '/public/story/01/roles/friends.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('村民')) {
+    return { label: '村民', iconPath: '/public/story/01/roles/villager.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('洞穴')) {
+    return { label: '洞穴', iconPath: '/public/story/01/roles/cave.png', placement: 'right', showAvatar: true };
+  }
+  if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) {
+    return { label: '旅程', iconPath: '/public/story/01/roles/journey.png', placement: 'right', showAvatar: true };
+  }
+  return { label: '旁白', iconPath: '/public/story/01/roles/narrator.png', placement: 'left', showAvatar: false };
+}
+
 function getRoleIconPath(title) {
-  if (title.includes('熊熊的內心')) return '/public/story/01/roles/inner-bear.png';
-  if (title.includes('熊熊')) return '/public/story/01/roles/bear.png';
-  if (title.includes('旁白') || title.includes('早餐')) return '/public/story/01/roles/narrator.png';
-  if (title.includes('夢境')) return '/public/story/01/roles/dream.png';
-  if (title.includes('莉莉')) return '/public/story/01/roles/lily.png';
-  if (title.includes('熊爸爸')) return '/public/story/01/roles/dad.png';
-  if (title.includes('熊媽媽')) return '/public/story/01/roles/mom.png';
-  if (title.includes('好友')) return '/public/story/01/roles/friends.png';
-  if (title.includes('村民')) return '/public/story/01/roles/villager.png';
-  if (title.includes('河狸')) return '/public/story/01/roles/beaver.png';
-  if (title.includes('鹿')) return '/public/story/01/roles/deer.png';
-  if (title.includes('貓頭鷹')) return '/public/story/01/roles/owl.png';
-  if (title.includes('蜜蜂')) return '/public/story/01/roles/bee.png';
-  if (title.includes('洞穴')) return '/public/story/01/roles/cave.png';
-  if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) return '/public/story/01/roles/journey.png';
-  return '/public/story/01/roles/narrator.png';
+  return getRoleCardMeta(title).iconPath;
 }
 
 function getRoleThemeInfo(title) {
-  if (title.includes('熊熊的內心')) return { border: '#8B6FB7', button: '#C7B2EA' };
-  if (title.includes('熊熊')) return { border: '#8B6A4E', button: '#F3BD63' };
-  if (title.includes('旁白') || title.includes('早餐')) return { border: '#56616A', button: '#B8C4CC' };
-  if (title.includes('夢境')) return { border: '#9A7A1F', button: '#F6E39C' };
-  if (title.includes('莉莉')) return { border: '#B9687B', button: '#F5C9D4' };
-  if (title.includes('熊爸爸')) return { border: '#5D7A3F', button: '#CFE5B7' };
-  if (title.includes('熊媽媽')) return { border: '#A95555', button: '#F6C2C2' };
-  if (title.includes('好友')) return { border: '#3D7D8D', button: '#BCE7F0' };
-  if (title.includes('村民')) return { border: '#8A6E2A', button: '#E9D7AE' };
-  if (title.includes('河狸')) return { border: '#8D5A3B', button: '#E9C5A6' };
-  if (title.includes('鹿')) return { border: '#81722B', button: '#ECE0AC' };
-  if (title.includes('貓頭鷹')) return { border: '#6C543D', button: '#D7BCA6' };
-  if (title.includes('蜜蜂')) return { border: '#9D7A00', button: '#F8DD8B' };
-  if (title.includes('洞穴')) return { border: '#58638F', button: '#D1D8F2' };
-  if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) return { border: '#5C7240', button: '#D0DCBE' };
-  return { border: '#56616A', button: '#B8C4CC' };
+  if (title.includes('熊熊的內心')) return { border: '#8B6FB7', chip: '#8B6FB7', button: '#C7B2EA' };
+  if (title.includes('熊熊')) return { border: '#8B6A4E', chip: '#5E4A35', button: '#F3BD63' };
+  if (title.includes('旁白') || title.includes('早餐')) return { border: '#56616A', chip: '#56616A', button: '#B8C4CC' };
+  if (title.includes('夢境')) return { border: '#9A7A1F', chip: '#9A7A1F', button: '#F6E39C' };
+  if (title.includes('莉莉')) return { border: '#B9687B', chip: '#D9C06C', button: '#F5C9D4' };
+  if (title.includes('熊爸爸')) return { border: '#5D7A3F', chip: '#5D7A3F', button: '#CFE5B7' };
+  if (title.includes('熊媽媽')) return { border: '#A95555', chip: '#A95555', button: '#F6C2C2' };
+  if (title.includes('好友')) return { border: '#3D7D8D', chip: '#3D7D8D', button: '#BCE7F0' };
+  if (title.includes('村民')) return { border: '#8A6E2A', chip: '#8A6E2A', button: '#E9D7AE' };
+  if (title.includes('河狸')) return { border: '#8D5A3B', chip: '#8D5A3B', button: '#E9C5A6' };
+  if (title.includes('鹿')) return { border: '#81722B', chip: '#81722B', button: '#ECE0AC' };
+  if (title.includes('貓頭鷹')) return { border: '#6C543D', chip: '#6C543D', button: '#D7BCA6' };
+  if (title.includes('蜜蜂')) return { border: '#9D7A00', chip: '#9D7A00', button: '#F8DD8B' };
+  if (title.includes('洞穴')) return { border: '#58638F', chip: '#58638F', button: '#D1D8F2' };
+  if (title.includes('旅') || title.includes('篝火') || title.includes('入口')) return { border: '#5C7240', chip: '#5C7240', button: '#D0DCBE' };
+  return { border: '#56616A', chip: '#56616A', button: '#B8C4CC' };
 }
 
 function toLineLabel(text) {
