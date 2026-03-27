@@ -64,6 +64,7 @@
     dom.draftEditorShell = document.getElementById('draft-editor-shell');
     dom.draftEditorForm = document.getElementById('draft-editor-form');
     dom.saveStory = document.getElementById('save-story');
+    dom.publishAssets = document.getElementById('publish-assets');
     dom.validateStory = document.getElementById('validate-story');
     dom.testTrigger = document.getElementById('test-trigger');
     dom.nodeGraph = document.getElementById('node-graph');
@@ -103,6 +104,7 @@
     dom.saveDraftImport.addEventListener('click', handleSaveDraftImport);
     dom.applyAllDraft.addEventListener('click', handleApplyAllDraft);
     dom.saveStory.addEventListener('click', handleSaveStory);
+    dom.publishAssets.addEventListener('click', handlePublishAssets);
     dom.saveStoryMeta.addEventListener('click', handleSaveStory);
     dom.validateStory.addEventListener('click', handleValidateStory);
     dom.testTrigger.addEventListener('click', handleTestTrigger);
@@ -448,6 +450,16 @@
       ? `全故事 validate 失敗：${failed.length} 個節點有錯。`
       : `全故事 validate 通過：${result.results.length} 個節點。`;
     render();
+  }
+
+  async function handlePublishAssets() {
+    const story = currentStory();
+    if (!story) return;
+    const result = await api(`/stories/${story.id}/publish-assets`, {
+      method: 'POST'
+    });
+    state.previewStatus = `已產生 ${result.published.assetCount} 張部署圖片，可直接 commit 到 Render。`;
+    renderPreviewOnly();
   }
 
   async function handleTestTrigger() {
