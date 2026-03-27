@@ -77,6 +77,7 @@
     dom.previewStatus = document.getElementById('preview-status');
     dom.scenePreview = document.getElementById('scene-preview');
     dom.previewCounter = document.getElementById('preview-counter');
+    dom.previewOutputMeta = document.getElementById('preview-output-meta');
     dom.payloadPreview = document.getElementById('payload-preview');
     dom.validateNode = document.getElementById('validate-node');
     dom.testNode = document.getElementById('test-node');
@@ -1560,6 +1561,10 @@
     dom.payloadPreview.textContent = state.preview ? JSON.stringify(state.preview.payload, null, 2) : '{}';
     const total = state.preview?.models?.length || 0;
     dom.previewCounter.textContent = total ? `共 ${total} 張` : '0 張';
+    const current = currentPreviewModel();
+    dom.previewOutputMeta.textContent = current?.renderedImagePath
+      ? `目前實際輸出圖: ${current.renderedImagePath}`
+      : '目前尚未產生輸出圖。';
     if (!state.preview || !total) return;
     state.preview.models.forEach((model, index) => {
       dom.scenePreview.appendChild(renderPreviewModel(model, index));
