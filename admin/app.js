@@ -65,6 +65,7 @@
     dom.draftEditorForm = document.getElementById('draft-editor-form');
     dom.saveStory = document.getElementById('save-story');
     dom.publishAssets = document.getElementById('publish-assets');
+    dom.deployRender = document.getElementById('deploy-render');
     dom.validateStory = document.getElementById('validate-story');
     dom.testTrigger = document.getElementById('test-trigger');
     dom.nodeGraph = document.getElementById('node-graph');
@@ -105,6 +106,7 @@
     dom.applyAllDraft.addEventListener('click', handleApplyAllDraft);
     dom.saveStory.addEventListener('click', handleSaveStory);
     dom.publishAssets.addEventListener('click', handlePublishAssets);
+    dom.deployRender.addEventListener('click', handleDeployRender);
     dom.saveStoryMeta.addEventListener('click', handleSaveStory);
     dom.validateStory.addEventListener('click', handleValidateStory);
     dom.testTrigger.addEventListener('click', handleTestTrigger);
@@ -460,6 +462,18 @@
     });
     state.previewStatus = `已產生 ${result.published.assetCount} 張部署圖片，可直接 commit 到 Render。`;
     renderPreviewOnly();
+  }
+
+  async function handleDeployRender() {
+    const story = currentStory();
+    if (!story) return;
+    await handleSaveStory();
+    const result = await api(`/stories/${story.id}/deploy`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    state.previewStatus = `已發布到 Render，commit ${result.deployment.head.slice(0, 7)}。Render 會自動重新部署。`;
+    render();
   }
 
   async function handleTestTrigger() {
