@@ -1707,18 +1707,15 @@
     article.className = 'rpg-scene';
     article.style.height = `${model.layout.totalHeight}px`;
     article.innerHTML = `
-      <div class="rpg-stage" style="height:${model.layout.heroHeight}px;">
-        <img class="hero" src="${escapeHtml(model.imageUrl)}" style="height:${model.layout.heroHeight}px;opacity:${model.heroImageOpacity ?? 1};transform:scale(${model.heroImageScale ?? 1});transform-origin:center center;" alt="">
-      </div>
-      <div class="rpg-body" style="height:${model.layout.questionHeight + model.layout.actionsHeight}px;padding:18px ${model.layout.bodyPaddingSide}px;">
-        <div class="rpg-text" style="min-height:${model.layout.questionHeight - 12}px;font-size:20px;font-weight:800;">${escapeHtml(model.prompt)}</div>
-        <div class="choice-actions">
-          <button class="choice-button" style="background:#F3BD63;">${escapeHtml(model.optionA.label)}</button>
-          <button class="choice-button" style="background:#D8E0EF;">${escapeHtml(model.optionB.label)}</button>
-        </div>
+      <div class="rpg-stage" style="height:${model.layout.totalHeight}px;">
+        <img class="hero" src="${escapeHtml(model.imageUrl)}" style="height:${model.layout.totalHeight}px;opacity:${model.heroImageOpacity ?? 1};transform:scale(${model.heroImageScale ?? 1});transform-origin:center center;" alt="">
       </div>
     `;
     wrapper.append(meta, article);
+    const hint = document.createElement('div');
+    hint.className = 'status-box';
+    hint.textContent = `LINE 會在對話框顯示: ${model.prompt} / ${model.optionA.label} / ${model.optionB.label}`;
+    wrapper.append(hint);
     wrapper.addEventListener('click', () => {
       state.previewIndex = index;
       renderPreviewOnly();
