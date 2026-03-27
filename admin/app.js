@@ -485,7 +485,7 @@
       method: 'POST',
       body: JSON.stringify({ nodeId: story.startNodeId })
     });
-    state.previewStatus = `已送出開始故事測試。request id: ${result.broadcast.requestId || 'n/a'}`;
+    state.previewStatus = `已送出 101 / ACT 1 測試。request id: ${result.broadcast.requestId || 'n/a'}`;
     render();
   }
 
@@ -539,7 +539,7 @@
       body: JSON.stringify({ sessionKey })
     });
     dom.simulateSessionKey.value = 'local-preview';
-    dom.simulateText.value = '開始故事';
+    dom.simulateText.value = '101';
     dom.simulationOutput.textContent = JSON.stringify(result.simulation, null, 2);
   }
 
@@ -1118,7 +1118,8 @@
       createField('主講角色', select(characterOptions(true), draftNode.speakerCharacterId || '', (value) => updateDraftNodeField('speakerCharacterId', value))),
       createField('陪襯角色', select(characterOptions(true), draftNode.companionCharacterId || '', (value) => updateDraftNodeField('companionCharacterId', value))),
       createField('下一節點', select(nextNodeOptions(story), draftNode.nextNodeId || '', (value) => updateDraftNodeField('nextNodeId', value))),
-      createField('圖片', imageInput(draftNode.imagePath, (value) => updateDraftNodeField('imagePath', value)))
+      createField('圖片', imageInput(draftNode.imagePath, (value) => updateDraftNodeField('imagePath', value))),
+      createField('中文字體', select(fontOptions(), draftNode.previewFont || 'default', (value) => updateDraftNodeField('previewFont', value)))
     );
     grid.appendChild(createField('文字', textarea(draftNode.text || '', (value) => updateDraftNodeField('text', value)), 'single'));
     if (draftNode.type === 'choice') {
@@ -1147,6 +1148,7 @@
           createField('頁面圖片', imageInput(page.imagePath, (value) => updateDraftPageField(pageIndex, 'imagePath', value))),
           createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updateDraftPageField(pageIndex, 'speakerCharacterId', value))),
           createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updateDraftPageField(pageIndex, 'companionCharacterId', value))),
+          createField('中文字體', select(fontOptions(), page.previewFont || 'default', (value) => updateDraftPageField(pageIndex, 'previewFont', value))),
           createField('字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updateDraftPageField(pageIndex, 'lineTextSize', value)))
         );
         pageGrid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updateDraftPageField(pageIndex, 'text', value)), 'single'));
@@ -1443,6 +1445,7 @@
       createField('大圖透明度', decimalInput(node.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updateNodeField('heroImageOpacity', value))),
       createField('大圖縮放', rangeInput(node.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updateNodeField('heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
       createField('下一節點', select(nextNodeOptions(story), node.nextNodeId || '', (value) => updateNodeField('nextNodeId', value))),
+      createField('中文字體', select(fontOptions(), node.previewFont || 'default', (value) => updateNodeField('previewFont', value))),
       createField('LINE 字級', select(textSizeOptions(), node.lineTextSize || 'lg', (value) => updateNodeField('lineTextSize', value))),
       createField('文字顏色', colorInput(node.lineTextColor || '#2D241B', (value) => updateNodeField('lineTextColor', value))),
       createField('姓名牌大小', nameplateSizeSlider(node.nameplateSize || 'lg', (value) => updateNodeField('nameplateSize', value))),
@@ -1486,6 +1489,7 @@
       createField('大圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
       createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updatePageField(node, pageIndex, 'speakerCharacterId', value))),
       createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updatePageField(node, pageIndex, 'companionCharacterId', value))),
+      createField('中文字體', select(fontOptions(), page.previewFont || 'default', (value) => updatePageField(node, pageIndex, 'previewFont', value))),
       createField('LINE 字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updatePageField(node, pageIndex, 'lineTextSize', value))),
       createField('文字顏色', colorInput(page.lineTextColor || '#2D241B', (value) => updatePageField(node, pageIndex, 'lineTextColor', value))),
       createField('姓名牌大小', nameplateSizeSlider(page.nameplateSize || 'lg', (value) => updatePageField(node, pageIndex, 'nameplateSize', value)))
@@ -1602,6 +1606,8 @@
     hero.src = model.imageUrl;
     hero.style.height = `${model.layout.heroHeight}px`;
     hero.style.opacity = `${model.heroImageOpacity ?? 1}`;
+    hero.style.objectPosition = '50% 50%';
+    hero.style.transform = `scale(${Number.isFinite(model.heroImageScale) ? model.heroImageScale : 1})`;
     stage.appendChild(hero);
 
     if (model.kind === 'dialogue') {
@@ -1613,7 +1619,7 @@
         avatar.style.top = `${role.avatarY}px`;
         if (role.placement === 'left') avatar.style.left = `${role.avatarX}px`;
         else avatar.style.right = `${role.avatarX}px`;
-        avatar.innerHTML = `<img src="${escapeHtml(role.avatarPath)}" alt="${escapeHtml(role.name)}">`;
+        avatar.innerHTML = `<img src="${escapeHtml(role.avatarPath)}" alt="${escapeHtml(role.name)}" style="object-position:${role.avatarCenterX ?? 50}% ${role.avatarCenterY ?? 50}%;transform:scale(${role.avatarScale ?? 1});">`;
         if (index === 0) {
           const preset = state.globalSettings.nameplateSizePresets[model.nameplateSize] || state.globalSettings.nameplateSizePresets.lg;
           const plate = document.createElement('div');
@@ -1717,6 +1723,8 @@
     hero.alt = model.title || '';
     hero.style.height = `${model.layout.heroHeight}px`;
     hero.style.opacity = `${model.heroImageOpacity ?? 1}`;
+    hero.style.objectPosition = '50% 50%';
+    hero.style.transform = `scale(${Number.isFinite(model.heroImageScale) ? model.heroImageScale : 1})`;
     heroWrap.appendChild(hero);
 
     const promptWrap = document.createElement('div');
@@ -1950,7 +1958,11 @@
 
   function fontOptions() {
     const labels = {
-      default: 'LINE 預設字體'
+      default: 'LINE 預設字體',
+      handwritten: '手寫體',
+      cute: '娃娃體',
+      serif: '明體',
+      rounded: '圓體'
     };
     return state.globalSettings.previewFontOptions.map((option) => [option, labels[option] || option]);
   }
@@ -2211,6 +2223,10 @@
   }
 
   function previewFontCss(fontKey = 'default') {
+    if (fontKey === 'handwritten') return '"BiauKai", "DFKai-SB", "Klee One", "PingFang TC", cursive';
+    if (fontKey === 'cute') return '"Hannotate TC", "HanziPen TC", "PingFang TC", sans-serif';
+    if (fontKey === 'serif') return '"Songti TC", "Noto Serif TC", serif';
+    if (fontKey === 'rounded') return '"Arial Rounded MT Bold", "PingFang TC", sans-serif';
     return '"PingFang TC", "Noto Sans TC", sans-serif';
   }
 

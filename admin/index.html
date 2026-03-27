@@ -826,11 +826,15 @@
     .rpg-stage {
       position: relative;
       background: #f2eadf;
+      overflow: hidden;
     }
     .rpg-stage img.hero {
       width: 100%;
+      height: 100%;
       display: block;
       object-fit: cover;
+      object-position: center center;
+      transform-origin: center center;
     }
     .rpg-body {
       position: relative;
@@ -853,6 +857,8 @@
       flex-direction: column;
       align-items: center;
       gap: 8px;
+      overflow: hidden;
+      border-radius: 999px;
     }
     .rpg-avatar img {
       width: 100%;
@@ -1057,7 +1063,7 @@
                 <button class="button secondary" id="publish-assets">產生部署圖片</button>
                 <button class="button warn" id="deploy-render">發布到 Render</button>
                 <button class="button ghost" id="validate-story">檢查故事</button>
-                <button class="button good" id="test-trigger">測試開始故事</button>
+                <button class="button good" id="test-trigger">測試 101 / ACT 1</button>
               </div>
             </div>
             <div class="graph" id="node-graph"></div>
@@ -1102,7 +1108,7 @@
                   <div class="field-grid">
                     <div class="field">
                       <label>測試文字</label>
-                      <input id="simulate-text" value="開始故事" />
+                      <input id="simulate-text" value="101" />
                     </div>
                     <div class="field">
                       <label>Session Key</label>
@@ -1143,7 +1149,7 @@
                   </div>
                   <div class="field">
                     <label>觸發關鍵字</label>
-                    <input id="story-trigger-input" placeholder="例如：開始故事" />
+                    <input id="story-trigger-input" placeholder="例如：101" />
                   </div>
                   <div class="field">
                     <label>說明</label>
