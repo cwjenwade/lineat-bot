@@ -1572,8 +1572,8 @@
   }
 
   function renderPreviewModel(model, index) {
-    if (model.renderedImageUrl) return renderRenderedImagePreview(model, index);
     if (model.kind === 'choice') return renderChoicePreview(model, index);
+    if (model.renderedImageUrl) return renderRenderedImagePreview(model, index);
     const wrapper = document.createElement('div');
     wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
     wrapper.dataset.previewIndex = String(index);
@@ -1690,7 +1690,6 @@
   }
 
   function renderChoicePreview(model, index = 0) {
-    if (model.renderedImageUrl) return renderRenderedImagePreview(model, index);
     const wrapper = document.createElement('div');
     wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
     wrapper.dataset.previewIndex = String(index);
@@ -1706,16 +1705,57 @@
     const article = document.createElement('article');
     article.className = 'rpg-scene';
     article.style.height = `${model.layout.totalHeight}px`;
-    article.innerHTML = `
-      <div class="rpg-stage" style="height:${model.layout.totalHeight}px;">
-        <img class="hero" src="${escapeHtml(model.imageUrl)}" style="height:${model.layout.totalHeight}px;opacity:${model.heroImageOpacity ?? 1};transform:scale(${model.heroImageScale ?? 1});transform-origin:center center;" alt="">
-      </div>
-    `;
+    article.style.display = 'flex';
+    article.style.flexDirection = 'column';
+
+    const heroWrap = document.createElement('div');
+    heroWrap.className = 'rpg-stage';
+    heroWrap.style.height = `${model.layout.heroHeight}px`;
+    const hero = document.createElement('img');
+    hero.className = 'hero';
+    hero.src = model.renderedImageUrl || model.imageUrl;
+    hero.alt = model.title || '';
+    hero.style.height = `${model.layout.heroHeight}px`;
+    hero.style.opacity = `${model.heroImageOpacity ?? 1}`;
+    heroWrap.appendChild(hero);
+
+    const promptWrap = document.createElement('div');
+    promptWrap.className = 'rpg-body';
+    promptWrap.style.height = `${model.layout.questionHeight}px`;
+    promptWrap.style.display = 'flex';
+    promptWrap.style.alignItems = 'center';
+    promptWrap.style.justifyContent = 'center';
+    promptWrap.style.padding = '18px 20px';
+    promptWrap.style.background = '#FFF8EF';
+    const promptText = document.createElement('div');
+    promptText.className = 'rpg-text';
+    promptText.style.fontSize = '20px';
+    promptText.style.fontWeight = '800';
+    promptText.style.color = '#2D241B';
+    promptText.textContent = model.prompt;
+    promptWrap.appendChild(promptText);
+
+    const actionsWrap = document.createElement('div');
+    actionsWrap.style.height = `${model.layout.actionsHeight}px`;
+    actionsWrap.style.display = 'flex';
+    actionsWrap.style.flexDirection = 'column';
+    actionsWrap.style.gap = `${model.layout.buttonSpacing}px`;
+    actionsWrap.style.padding = '20px';
+    actionsWrap.style.background = '#FFFDF8';
+    const optionA = document.createElement('button');
+    optionA.className = 'choice-button';
+    optionA.style.background = '#F3BD63';
+    optionA.style.color = '#FFFFFF';
+    optionA.textContent = model.optionA.label;
+    const optionB = document.createElement('button');
+    optionB.className = 'choice-button';
+    optionB.style.background = '#D8E0EF';
+    optionB.style.color = '#FFFFFF';
+    optionB.textContent = model.optionB.label;
+    actionsWrap.append(optionA, optionB);
+
+    article.append(heroWrap, promptWrap, actionsWrap);
     wrapper.append(meta, article);
-    const hint = document.createElement('div');
-    hint.className = 'status-box';
-    hint.textContent = `LINE 會在對話框顯示: ${model.prompt} / ${model.optionA.label} / ${model.optionB.label}`;
-    wrapper.append(hint);
     wrapper.addEventListener('click', () => {
       state.previewIndex = index;
       renderPreviewOnly();
