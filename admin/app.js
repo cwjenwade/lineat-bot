@@ -1,1413 +1,2125 @@
-(function () {
-  const apiBase = window.ADMIN_API_BASE;
-  const moduleCatalog = [
-    {
-      type: 'narrative',
-      icon: '景',
-      label: '敘事圖片',
-      description: '單張敘事圖片加文字，適合建立場景與過場。',
-      color: '#d98045'
-    },
-    {
-      type: 'fullscreen',
-      icon: '滿',
-      label: '滿版訊息',
-      description: '用單張大圖或單段重點文字做情緒強化與關鍵轉場。',
-      color: '#c57c62'
-    },
-    {
-      type: 'choice',
-      icon: '岔',
-      label: '選項分支',
-      description: '建立兩個選項、兩條指向與對應回應。',
-      color: '#5b8191'
-    },
-    {
-      type: 'carousel',
-      icon: '頁',
-      label: '多頁訊息',
-      description: '橫向多頁卡片，每張可設定不同底圖與角色。',
-      color: '#6e9474'
-    },
-    {
-      type: 'dialogue',
-      icon: '話',
-      label: '對話框',
-      description: '角色說話或旁白提示，適合承接情緒與節奏。',
-      color: '#9377b0'
-    }
-  ];
+(() => {
+  const API_BASE = window.__LINEAT_ADMIN__?.apiBase || '/api';
 
   const state = {
+    role: 'manager',
     stories: [],
-    activeStoryId: null,
-    activeNodeId: null,
-    activeTopTab: 'create',
-    suggestions: [],
-    analysis: null,
-    dragNodeId: null,
-    drawerOpen: false
+    storyDetail: null,
+    currentStoryId: '',
+    currentNodeId: '',
+    currentDraftNodeId: '',
+    globalSettings: null,
+    preview: null,
+    previewIssues: [],
+    previewStatus: '尚未載入節點。',
+    storyStage: 'final',
+    previewPanel: 'visual',
+    previewIndex: 0
   };
 
-  const storyTabs = document.getElementById('story-tabs');
-  const newStoryTitle = document.getElementById('new-story-title');
-  const characterLibrary = document.getElementById('character-library');
-  const palette = document.getElementById('palette');
-  const storyboard = document.getElementById('storyboard');
-  const storyboardMeta = document.getElementById('storyboard-meta');
-  const scenePreview = document.getElementById('scene-preview');
-  const nodeInspector = document.getElementById('node-inspector');
-  const scriptInput = document.getElementById('script-input');
-  const suggestionList = document.getElementById('suggestion-list');
-  const analysisPanel = document.getElementById('analysis-panel');
-  const previewStructure = document.getElementById('preview-structure');
-  const previewChat = document.getElementById('preview-chat');
-  const previewJson = document.getElementById('preview-json');
-  const createView = document.getElementById('create-view');
-  const previewView = document.getElementById('preview-view');
-  const drawerShell = document.getElementById('script-drawer-shell');
-  const workspace = document.getElementById('workspace');
+  const dom = {};
 
-  function uid(prefix) {
-    return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
+  document.addEventListener('DOMContentLoaded', boot);
+
+  async function boot() {
+    cacheDom();
+    bindStaticEvents();
+    await reloadAll();
   }
 
-  function escapeHtml(value) {
-    return `${value || ''}`
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#39;');
+  function cacheDom() {
+    dom.refreshAll = document.getElementById('refresh-all');
+
+    dom.storyCount = document.getElementById('story-count');
+    dom.newStoryTitle = document.getElementById('new-story-title');
+    dom.createStory = document.getElementById('create-story');
+    dom.storyList = document.getElementById('story-list');
+    dom.editorStoryTitle = document.getElementById('editor-story-title');
+    dom.editorStoryMeta = document.getElementById('editor-story-meta');
+    dom.storyTitleInput = document.getElementById('story-title-input');
+    dom.storyDescriptionInput = document.getElementById('story-description-input');
+    dom.storyStartNode = document.getElementById('story-start-node');
+    dom.storyTriggerInput = document.getElementById('story-trigger-input');
+    dom.storyProgressGrid = document.getElementById('story-progress-grid');
+    dom.saveStoryMeta = document.getElementById('save-story-meta');
+    dom.storyStageTabs = Array.from(document.querySelectorAll('[data-story-stage]'));
+    dom.storyStagePanels = {
+      characters: document.getElementById('story-stage-characters'),
+      import: document.getElementById('story-stage-import'),
+      final: document.getElementById('story-stage-final')
+    };
+    dom.storyCharacterList = document.getElementById('story-character-list');
+    dom.addStoryCharacter = document.getElementById('add-story-character');
+    dom.addProtagonistTemplate = document.getElementById('add-protagonist-template');
+    dom.addSupportingTemplate = document.getElementById('add-supporting-template');
+    dom.scriptImportText = document.getElementById('script-import-text');
+    dom.scriptImportFile = document.getElementById('script-import-file');
+    dom.importScriptText = document.getElementById('import-script-text');
+    dom.matchUnboundRoles = document.getElementById('match-unbound-roles');
+    dom.draftImportStatus = document.getElementById('draft-import-status');
+    dom.draftNodeList = document.getElementById('draft-node-list');
+    dom.saveDraftImport = document.getElementById('save-draft-import');
+    dom.applyAllDraft = document.getElementById('apply-all-draft');
+    dom.draftEditorEmpty = document.getElementById('draft-editor-empty');
+    dom.draftEditorShell = document.getElementById('draft-editor-shell');
+    dom.draftEditorForm = document.getElementById('draft-editor-form');
+    dom.saveStory = document.getElementById('save-story');
+    dom.validateStory = document.getElementById('validate-story');
+    dom.testTrigger = document.getElementById('test-trigger');
+    dom.nodeGraph = document.getElementById('node-graph');
+    dom.nodeEditorEmpty = document.getElementById('node-editor-empty');
+    dom.nodeEditorShell = document.getElementById('node-editor-shell');
+    dom.nodeEditorForm = document.getElementById('node-editor-form');
+    dom.moduleButtons = Array.from(document.querySelectorAll('[data-add-node]'));
+
+    dom.previewStatus = document.getElementById('preview-status');
+    dom.scenePreview = document.getElementById('scene-preview');
+    dom.previewCounter = document.getElementById('preview-counter');
+    dom.payloadPreview = document.getElementById('payload-preview');
+    dom.validateNode = document.getElementById('validate-node');
+    dom.testNode = document.getElementById('test-node');
+    dom.simulateText = document.getElementById('simulate-text');
+    dom.simulateSessionKey = document.getElementById('simulate-session-key');
+    dom.simulateMessage = document.getElementById('simulate-message');
+    dom.simulateReset = document.getElementById('simulate-reset');
+    dom.simulationOutput = document.getElementById('simulation-output');
+    dom.previewTabs = Array.from(document.querySelectorAll('[data-preview-panel]'));
+    dom.previewPanels = {
+      visual: document.getElementById('preview-panel-visual'),
+      payload: document.getElementById('preview-panel-payload'),
+      simulate: document.getElementById('preview-panel-simulate')
+    };
   }
 
-  function clamp(value, min, max) {
-    return Math.min(Math.max(value, min), max);
-  }
-
-  function truncate(text, max = 120) {
-    if (!text) return '';
-    return text.length > max ? `${text.slice(0, max)}...` : text;
-  }
-
-  function nodeTypeInfo(type) {
-    return moduleCatalog.find((item) => item.type === type) || moduleCatalog[0];
-  }
-
-  function defaultCharacters() {
-    return [
-      {
-        id: 'char-bear',
-        name: '熊熊',
-        avatar: '/public/story/01/bhead001.png',
-        placement: 'left-lower',
-        role: 'lead'
-      },
-      {
-        id: 'char-lily',
-        name: '莉莉',
-        avatar: '',
-        placement: 'right-lower',
-        role: 'support'
-      }
-    ];
-  }
-
-  function ensureStoryDefaults(story) {
-    story.characters ||= defaultCharacters().map((character) => ({ ...character }));
-
-    const defaults = defaultCharacters();
-    defaults.forEach((preset) => {
-      let found = story.characters.find((character) => character.id === preset.id);
-      if (!found) {
-        story.characters.push({ ...preset });
-        found = story.characters.find((character) => character.id === preset.id);
-      }
-      found.name ||= preset.name;
-      found.avatar ||= '';
-      found.placement ||= preset.placement;
-      found.role ||= preset.role;
-    });
-  }
-
-  function activeStory() {
-    return state.stories.find((story) => story.id === state.activeStoryId) || null;
-  }
-
-  function activeNode() {
-    const story = activeStory();
-    return story?.nodes.find((node) => node.id === state.activeNodeId) || null;
+  function bindStaticEvents() {
+    dom.refreshAll.addEventListener('click', reloadAll);
+    dom.createStory.addEventListener('click', handleCreateStory);
+    dom.addStoryCharacter.addEventListener('click', handleAddStoryCharacter);
+    dom.addProtagonistTemplate.addEventListener('click', () => handleAddStoryCharacter('protagonist'));
+    dom.addSupportingTemplate.addEventListener('click', () => handleAddStoryCharacter('supporting'));
+    dom.importScriptText.addEventListener('click', handleImportScriptText);
+    dom.scriptImportFile.addEventListener('change', handleImportScriptFile);
+    dom.matchUnboundRoles.addEventListener('click', handleMatchUnboundRoles);
+    dom.saveDraftImport.addEventListener('click', handleSaveDraftImport);
+    dom.applyAllDraft.addEventListener('click', handleApplyAllDraft);
+    dom.saveStory.addEventListener('click', handleSaveStory);
+    dom.saveStoryMeta.addEventListener('click', handleSaveStory);
+    dom.validateStory.addEventListener('click', handleValidateStory);
+    dom.testTrigger.addEventListener('click', handleTestTrigger);
+    dom.validateNode.addEventListener('click', handleValidateNode);
+    dom.testNode.addEventListener('click', handleTestNode);
+    dom.simulateMessage.addEventListener('click', handleSimulateMessage);
+    dom.simulateReset.addEventListener('click', handleResetSimulation);
+    dom.moduleButtons.forEach((button) => button.addEventListener('click', () => handleAddNode(button.dataset.addNode)));
+    dom.storyTitleInput.addEventListener('input', () => updateStoryField('title', dom.storyTitleInput.value));
+    dom.storyDescriptionInput.addEventListener('input', () => updateStoryField('description', dom.storyDescriptionInput.value));
+    dom.storyTriggerInput.addEventListener('input', () => updateStoryTrigger(dom.storyTriggerInput.value));
+    dom.storyStartNode.addEventListener('change', () => updateStoryField('startNodeId', dom.storyStartNode.value));
+    dom.storyStageTabs.forEach((button) => button.addEventListener('click', () => {
+      state.storyStage = button.dataset.storyStage;
+      renderStories();
+    }));
+    dom.previewTabs.forEach((button) => button.addEventListener('click', () => {
+      state.previewPanel = button.dataset.previewPanel;
+      renderPreviewOnly();
+    }));
   }
 
   async function api(path, options = {}) {
-    const response = await fetch(`${apiBase}${path}`, {
-      headers: {
-        ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-        ...(options.headers || {})
-      },
-      ...options
-    });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || `Request failed: ${response.status}`);
-    }
-    return data;
-  }
-
-  async function uploadFile(file) {
-    const form = new FormData();
-    form.append('file', file);
-    return api('/upload-image', {
-      method: 'POST',
-      body: form
-    });
-  }
-
-  function emptyPage(index = 1) {
-    return {
-      title: `第 ${index} 頁`,
-      speaker: '旁白',
-      text: '',
-      image: '',
-      fontFamily: 'default',
-      textSize: 'lg',
-      nameplateSize: 'lg'
+    const headers = {
+      'Content-Type': 'application/json',
+      'x-lineat-role': state.role,
+      'x-lineat-actor': state.role,
+      ...(options.headers || {})
     };
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers
+    });
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : {};
+    if (!response.ok) {
+      throw new Error(payload.error || text || `Request failed: ${response.status}`);
+    }
+    return payload;
   }
 
-  function ensureNodeDefaults(node) {
-    const story = activeStory();
-    const defaultSpeakerId = story?.characters?.[0]?.id || '';
-    const defaultCompanionId = story?.characters?.[1]?.id || '';
+  function clone(value) {
+    return JSON.parse(JSON.stringify(value));
+  }
 
-    node.id ||= uid('node');
-    node.type ||= 'narrative';
-    node.title ||= `新的${nodeTypeInfo(node.type).label}`;
-    node.speaker ||= '';
-    node.speakerCharacterId ||= inferCharacterIdFromSpeaker(node.speaker);
-    node.companionCharacterId ||= '';
-    node.text ||= '';
-    node.image ||= '';
-    node.nextNodeId ||= '';
-    node.fontFamily ||= 'default';
-    node.textSize ||= 'lg';
-    node.nameplateSize ||= 'lg';
+  function currentStory() {
+    return state.storyDetail?.story || null;
+  }
 
-    if (node.type === 'choice') {
-      node.optionA ||= { label: '選項 A', feedback: '', nextNodeId: '' };
-      node.optionB ||= { label: '選項 B', feedback: '', nextNodeId: '' };
-      node.optionA.label ||= '選項 A';
-      node.optionB.label ||= '選項 B';
-      node.optionA.feedback ||= '';
-      node.optionB.feedback ||= '';
-      node.optionA.nextNodeId ||= '';
-      node.optionB.nextNodeId ||= '';
+  function currentNode() {
+    const story = currentStory();
+    return story?.nodes.find((node) => node.id === state.currentNodeId) || null;
+  }
+
+  function currentTriggerBinding() {
+    if (!state.globalSettings || !state.currentStoryId) return null;
+    return state.globalSettings.triggerBindings.find((binding) => binding.storyId === state.currentStoryId) || null;
+  }
+
+  function currentPreviewModel() {
+    return state.preview?.models?.[state.previewIndex] || null;
+  }
+
+  function currentPreviewContext() {
+    const node = currentNode();
+    const model = currentPreviewModel();
+    if (!node || !model) {
+      return {
+        targetType: 'node',
+        model,
+        pageIndex: -1,
+        page: null
+      };
     }
 
     if (node.type === 'carousel') {
-      node.pages ||= [emptyPage(1)];
-      if (!node.pages.length) {
-        node.pages.push(emptyPage(1));
+      const pageIndex = Math.min(state.previewIndex, Math.max(0, (node.pages?.length || 1) - 1));
+      return {
+        targetType: 'page',
+        model,
+        pageIndex,
+        page: node.pages?.[pageIndex] || null
+      };
+    }
+
+    if (node.type === 'choice') {
+      const pageCount = node.pages?.length || 0;
+      if (pageCount && state.previewIndex < pageCount) {
+        return {
+          targetType: 'page',
+          model,
+          pageIndex: state.previewIndex,
+          page: node.pages?.[state.previewIndex] || null
+        };
       }
-      node.pages.forEach((page, index) => {
-        page.title ||= `第 ${index + 1} 頁`;
-        page.speaker ||= '旁白';
-        page.speakerCharacterId ||= inferCharacterIdFromSpeaker(page.speaker);
-        page.companionCharacterId ||= '';
-        page.text ||= '';
-        page.image ||= '';
-        page.fontFamily ||= 'default';
-        page.textSize ||= 'lg';
-        page.nameplateSize ||= 'lg';
+      return {
+        targetType: 'choice',
+        model,
+        pageIndex: -1,
+        page: null
+      };
+    }
+
+    return {
+      targetType: 'node',
+      model,
+      pageIndex: -1,
+      page: null
+    };
+  }
+
+  function resetPreviewSelection() {
+    state.previewIndex = 0;
+  }
+
+  async function reloadAll() {
+    const [storiesPayload, settingsPayload] = await Promise.all([
+      api('/stories'),
+      api('/global-settings')
+    ]);
+
+    state.stories = storiesPayload.stories;
+    state.globalSettings = settingsPayload.globalSettings;
+
+    const nextStoryId = state.currentStoryId || state.stories[0]?.id || '';
+    if (nextStoryId) {
+      await loadStory(nextStoryId);
+    } else {
+      state.storyDetail = null;
+      state.currentStoryId = '';
+      state.currentNodeId = '';
+      state.preview = null;
+      state.previewIssues = [];
+    }
+    render();
+  }
+
+  async function loadStory(storyId) {
+    const payload = await api(`/stories/${storyId}`);
+    state.storyDetail = payload;
+    state.currentStoryId = storyId;
+    const story = payload.story;
+    state.currentNodeId = state.currentNodeId && story.nodes.some((node) => node.id === state.currentNodeId)
+      ? state.currentNodeId
+      : (story.startNodeId || story.nodes[0]?.id || '');
+    resetPreviewSelection();
+    await refreshPreview();
+  }
+
+  async function handleCreateStory() {
+    const payload = await api('/stories', {
+      method: 'POST',
+      body: JSON.stringify({ title: dom.newStoryTitle.value.trim() })
+    });
+    dom.newStoryTitle.value = '';
+    await reloadAll();
+    await loadStory(payload.story.id);
+    render();
+  }
+
+  function updateStoryField(field, value) {
+    if (!currentStory()) return;
+    state.storyDetail.story[field] = value;
+    render();
+    schedulePreview();
+  }
+
+  function updateStoryTrigger(keyword) {
+    if (!state.globalSettings || !currentStory()) return;
+    const binding = currentTriggerBinding();
+    if (binding) {
+      binding.keyword = keyword;
+      binding.startNodeId = currentStory().startNodeId;
+    } else {
+      state.globalSettings.triggerBindings.push({
+        id: `trigger-${Date.now()}`,
+        keyword,
+        storyId: currentStory().id,
+        startNodeId: currentStory().startNodeId
       });
     }
-
-    if (node.type === 'dialogue') {
-      node.speakerCharacterId ||= defaultSpeakerId;
-      node.companionCharacterId ||= defaultCompanionId;
-    }
-  }
-
-  function moduleTemplate(type) {
-    if (type === 'fullscreen') {
-      return {
-        id: uid('fullscreen'),
-        type,
-        title: '新的滿版訊息',
-        speaker: '旁白',
-        text: '在這裡輸入關鍵訊息。',
-        image: '',
-        nextNodeId: ''
-      };
-    }
-
-    if (type === 'choice') {
-      return {
-        id: uid('choice'),
-        type,
-        title: '新的選項分支',
-        text: '在這裡輸入提問或情境。',
-        image: '',
-        optionA: { label: '選項 A', feedback: '', nextNodeId: '' },
-        optionB: { label: '選項 B', feedback: '', nextNodeId: '' }
-      };
-    }
-
-    if (type === 'carousel') {
-      return {
-        id: uid('carousel'),
-        type,
-        title: '新的多頁訊息',
-        pages: [{
-          ...emptyPage(1),
-          speakerCharacterId: '',
-          companionCharacterId: ''
-        }],
-        nextNodeId: ''
-      };
-    }
-
-    if (type === 'dialogue') {
-      return {
-        id: uid('dialogue'),
-        type,
-        title: '新的對話框',
-        speaker: '熊熊',
-        speakerCharacterId: 'char-bear',
-        companionCharacterId: 'char-lily',
-        text: '在這裡輸入角色對話。',
-        image: '',
-        fontFamily: 'default',
-        textSize: 'lg',
-        nameplateSize: 'lg',
-        nextNodeId: ''
-      };
-    }
-
-    return {
-      id: uid('narrative'),
-      type: 'narrative',
-      title: '新的敘事圖片',
-      speaker: '旁白',
-      text: '在這裡輸入敘事文字。',
-      image: '',
-      nextNodeId: ''
-    };
-  }
-
-  function nodeSummary(node) {
-    if (node.type === 'choice') {
-      return `${node.optionA?.label || '選項 A'}\n${node.optionB?.label || '選項 B'}`;
-    }
-    if (node.type === 'carousel') {
-      return `${node.pages?.length || 0} 頁多頁訊息`;
-    }
-    return node.text || '尚未填寫內容';
-  }
-
-  function targetTitle(targetId) {
-    if (!targetId) return '未連接';
-    const story = activeStory();
-    const target = story?.nodes.find((node) => node.id === targetId);
-    return target ? target.title : '未連接';
-  }
-
-  function characterById(characterId) {
-    const story = activeStory();
-    return story?.characters?.find((character) => character.id === characterId) || null;
-  }
-
-  function inferCharacterIdFromSpeaker(speaker = '') {
-    const story = activeStory();
-    const normalized = `${speaker}`.replace(/[（(].*?[）)]/g, '').trim();
-    return story?.characters?.find((character) => normalized.includes(character.name) || character.name.includes(normalized))?.id || '';
-  }
-
-  function characterPlacement(characterId) {
-    return characterById(characterId)?.placement || 'left-lower';
-  }
-
-  function characterLabel(characterId, fallback = '角色') {
-    return characterById(characterId)?.name || fallback;
-  }
-
-  function roleSelect(value, onChange, options = {}) {
-    const story = activeStory();
-    const select = document.createElement('select');
-    const allowEmpty = options.allowEmpty !== false;
-    select.innerHTML = `${allowEmpty ? '<option value="">未指定</option>' : ''}${(story?.characters || []).map((character) => `<option value="${character.id}">${escapeHtml(character.name)}</option>`).join('')}`;
-    select.value = value || '';
-    select.onchange = (event) => onChange(event.target.value);
-    return select;
-  }
-
-  function roleNameplateClass(characterId) {
-    const placement = characterPlacement(characterId);
-    return placement.startsWith('right') ? 'right' : 'left';
-  }
-
-  function fontFamilySelect(value, onChange) {
-    const select = document.createElement('select');
-    select.innerHTML = `
-      <option value="default">LINE 預設</option>
-      <option value="handwritten">手寫感</option>
-      <option value="serif">襯線</option>
-      <option value="rounded">圓體感</option>
-    `;
-    select.value = value || 'default';
-    select.onchange = (event) => onChange(event.target.value);
-    return select;
-  }
-
-  function textSizeSelect(value, onChange) {
-    const select = document.createElement('select');
-    select.innerHTML = `
-      <option value="md">中</option>
-      <option value="lg">大</option>
-      <option value="xl">特大</option>
-    `;
-    select.value = value || 'lg';
-    select.onchange = (event) => onChange(event.target.value);
-    return select;
-  }
-
-  function nameplateSizeSelect(value, onChange) {
-    const select = document.createElement('select');
-    select.innerHTML = `
-      <option value="md">中</option>
-      <option value="lg">大</option>
-      <option value="xl">特大</option>
-    `;
-    select.value = value || 'lg';
-    select.onchange = (event) => onChange(event.target.value);
-    return select;
-  }
-
-  function previewFontFamily(fontFamily) {
-    if (fontFamily === 'handwritten') return '"DFKai-SB", "Klee One", "PingFang TC", cursive';
-    if (fontFamily === 'serif') return '"Songti TC", "Noto Serif TC", serif';
-    if (fontFamily === 'rounded') return '"Arial Rounded MT Bold", "PingFang TC", sans-serif';
-    return '"PingFang TC", "Noto Sans TC", sans-serif';
-  }
-
-  function previewTextSize(size) {
-    if (size === 'md') return '18px';
-    if (size === 'xl') return '24px';
-    return '20px';
-  }
-
-  function previewNameplateSize(size) {
-    if (size === 'md') return { fontSize: '15px', minWidth: '124px', padding: '10px 18px' };
-    if (size === 'xl') return { fontSize: '19px', minWidth: '172px', padding: '14px 26px' };
-    return { fontSize: '17px', minWidth: '148px', padding: '12px 22px' };
-  }
-
-  async function loadStories() {
-    const { stories } = await api('/stories');
-    state.stories = stories.map((story) => ({
-      ...story,
-      nodes: (story.nodes || []).map((node) => ({ ...node }))
-    }));
-    state.stories.forEach(ensureStoryDefaults);
-    if (state.stories[0]) {
-      state.activeStoryId = state.stories[0].id;
-      state.activeNodeId = state.stories[0].nodes[0]?.id || null;
-    }
     render();
   }
 
-  async function createStory() {
-    const title = newStoryTitle.value.trim();
-    const { story } = await api('/stories', {
-      method: 'POST',
-      body: JSON.stringify({ title })
-    });
-    ensureStoryDefaults(story);
-    state.stories.push(story);
-    state.activeStoryId = story.id;
-    state.activeNodeId = story.nodes[0]?.id || null;
-    newStoryTitle.value = '';
-    render();
-  }
-
-  async function saveStory() {
-    const story = activeStory();
+  async function handleSaveStory() {
+    const story = currentStory();
     if (!story) return;
-    ensureStoryDefaults(story);
-
-    const payload = {
-      ...story,
-      nodes: story.nodes.map((node) => ({ ...node }))
-    };
-
-    const { story: saved } = await api(`/stories/${story.id}`, {
+    const saved = await api(`/stories/${story.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ story: payload })
+      body: JSON.stringify({ story })
     });
-
-    const index = state.stories.findIndex((item) => item.id === story.id);
-    state.stories[index] = saved;
-    render();
-  }
-
-  function setActiveStory(storyId) {
-    state.activeStoryId = storyId;
-    state.activeNodeId = activeStory()?.nodes[0]?.id || null;
-    render();
-  }
-
-  function addNode(type, initialData = {}) {
-    const story = activeStory();
-    if (!story) return;
-    const node = { ...moduleTemplate(type), ...initialData };
-    ensureNodeDefaults(node);
-    story.nodes.push(node);
-    state.activeNodeId = node.id;
-    render();
-  }
-
-  function duplicateNode(node) {
-    addNode(node.type, JSON.parse(JSON.stringify({
-      ...node,
-      id: uid(node.type),
-      title: `${node.title} Copy`
-    })));
-  }
-
-  function removeNode(nodeId) {
-    const story = activeStory();
-    if (!story) return;
-    story.nodes = story.nodes.filter((node) => node.id !== nodeId);
-    story.nodes.forEach((node) => {
-      if (node.nextNodeId === nodeId) node.nextNodeId = '';
-      if (node.optionA?.nextNodeId === nodeId) node.optionA.nextNodeId = '';
-      if (node.optionB?.nextNodeId === nodeId) node.optionB.nextNodeId = '';
+    state.storyDetail.story = saved.story;
+    await api('/global-settings/triggers', {
+      method: 'PUT',
+      body: JSON.stringify({ triggerBindings: state.globalSettings.triggerBindings })
     });
-    if (state.activeNodeId === nodeId) {
-      state.activeNodeId = story.nodes[0]?.id || null;
+    await reloadAll();
+    state.previewStatus = '故事已儲存。';
+    render();
+  }
+
+  function currentDraftImport() {
+    return currentStory()?.draftImport || null;
+  }
+
+  function currentDraftNode() {
+    return currentDraftImport()?.nodes?.find((node) => node.id === state.currentDraftNodeId) || null;
+  }
+
+  function computeDraftDiff(node) {
+    const story = currentStory();
+    const current = story?.nodes?.find((entry) => entry.id === node.id);
+    if (!current) return { isNew: true, changedFields: ['node'] };
+    const fields = ['type', 'text', 'imagePath', 'speakerCharacterId', 'companionCharacterId', 'nextNodeId', 'prompt'];
+    const changedFields = fields.filter((field) => `${node[field] || ''}` !== `${current[field] || ''}`);
+    return { isNew: false, changedFields };
+  }
+
+  async function handleAddStoryCharacter(category = 'supporting') {
+    const story = currentStory();
+    if (!story) return;
+    const isProtagonist = category === 'protagonist';
+    story.characters.push({
+      id: `char-${Date.now()}`,
+      name: isProtagonist ? `主角 ${story.characters.length + 1}` : `配角 ${story.characters.length + 1}`,
+      category,
+      sortOrder: story.characters.length + 1,
+      avatarPath: '',
+      placement: isProtagonist ? 'left' : 'right',
+      avatarX: 14,
+      avatarY: 332,
+      avatarSize: isProtagonist ? 92 : 84,
+      nameplateAnchor: isProtagonist ? 'left-fixed' : 'right-percent',
+      nameplateX: 110,
+      nameplateRightPercent: 30,
+      nameplateY: 346,
+      nameplateColor: isProtagonist ? '#8B6A4E' : '#56616A',
+      nameplateTextColor: '#FFFFFF',
+      nameplateSize: 'lg'
+    });
+    renderStories();
+  }
+
+  async function handleImportScriptText() {
+    const story = currentStory();
+    if (!story) return;
+    if (!story.characters?.length) {
+      state.previewStatus = '請先建立至少一個角色，再匯入劇本。';
+      renderPreviewOnly();
+      return;
     }
-    render();
+    const sourceText = dom.scriptImportText.value.trim();
+    if (!sourceText) {
+      state.previewStatus = '請先貼上劇本文字。';
+      renderPreviewOnly();
+      return;
+    }
+    const result = await api(`/stories/${story.id}/import-script`, {
+      method: 'POST',
+      body: JSON.stringify({ sourceText })
+    });
+    state.storyDetail.story = result.story;
+    state.storyStage = 'import';
+    state.previewStatus = `已匯入劇本草稿，共 ${result.draftImport.nodes.length} 個節點待校正。`;
+    renderStories();
   }
 
-  function reorderNodes(fromId, toId) {
-    if (!fromId || !toId || fromId === toId) return;
-    const story = activeStory();
+  async function handleImportScriptFile() {
+    const story = currentStory();
+    if (!story || !dom.scriptImportFile.files?.[0]) return;
+    if (!story.characters?.length) {
+      state.previewStatus = '請先建立至少一個角色，再匯入劇本。';
+      renderPreviewOnly();
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', dom.scriptImportFile.files[0]);
+    const response = await fetch(`${API_BASE}/stories/${story.id}/import-file`, {
+      method: 'POST',
+      headers: {
+        'x-lineat-role': state.role,
+        'x-lineat-actor': state.role
+      },
+      body: formData
+    });
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(payload.error || '檔案匯入失敗');
+    state.storyDetail.story = payload.story;
+    state.storyStage = 'import';
+    state.previewStatus = `已匯入檔案草稿，共 ${payload.draftImport.nodes.length} 個節點待校正。`;
+    renderStories();
+  }
+
+  async function handleSaveDraftImport() {
+    const story = currentStory();
     if (!story) return;
+    const result = await api(`/stories/${story.id}/draft`, {
+      method: 'PUT',
+      body: JSON.stringify({ draftImport: story.draftImport })
+    });
+    state.storyDetail.story = result.story;
+    state.previewStatus = 'AI 草稿已儲存。';
+    renderStories();
+  }
 
-    const fromIndex = story.nodes.findIndex((node) => node.id === fromId);
-    const toIndex = story.nodes.findIndex((node) => node.id === toId);
-    if (fromIndex === -1 || toIndex === -1) return;
+  async function handleApplyAllDraft() {
+    const story = currentStory();
+    if (!story) return;
+    const result = await api(`/stories/${story.id}/draft/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ applyAll: true })
+    });
+    state.storyDetail.story = result.story;
+    state.storyStage = 'final';
+    state.previewStatus = 'AI 草稿已套用到正式故事。';
+    renderStories();
+    await refreshPreview();
+  }
 
-    const [item] = story.nodes.splice(fromIndex, 1);
-    story.nodes.splice(toIndex, 0, item);
+  async function handleMatchUnboundRoles() {
+    const story = currentStory();
+    if (!story) return;
+    const result = await api(`/stories/${story.id}/characters/match-unbound`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    state.storyDetail.story.draftImport = result.draftImport;
+    state.previewStatus = '已嘗試將未綁定角色對應到現有角色。';
+    renderStories();
+  }
+
+  async function handleValidateStory() {
+    const story = currentStory();
+    if (!story) return;
+    await handleSaveStory();
+    const result = await api(`/stories/${story.id}/validate/story`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    const failed = result.results.filter((entry) => !entry.ok);
+    state.previewStatus = failed.length
+      ? `全故事 validate 失敗：${failed.length} 個節點有錯。`
+      : `全故事 validate 通過：${result.results.length} 個節點。`;
     render();
   }
 
-  async function analyzeScript() {
-    const story = activeStory();
-    const script = scriptInput.value.trim();
-    if (!script) return;
+  async function handleTestTrigger() {
+    const story = currentStory();
+    if (!story) return;
+    await handleSaveStory();
+    const result = await api(`/stories/${story.id}/test/trigger`, {
+      method: 'POST',
+      body: JSON.stringify({ nodeId: story.startNodeId })
+    });
+    state.previewStatus = `已送出開始故事測試。request id: ${result.broadcast.requestId || 'n/a'}`;
+    render();
+  }
 
-    const { analysis } = await api('/analyze-script', {
+  async function handleValidateNode() {
+    const story = currentStory();
+    const node = currentNode();
+    if (!story || !node) return;
+    const result = await api(`/stories/${story.id}/validate/draft`, {
       method: 'POST',
       body: JSON.stringify({
-        script,
-        existingNodes: story?.nodes || [],
-        characters: story?.characters || []
+        story,
+        globalSettings: state.globalSettings,
+        nodeId: node.id
       })
     });
-
-    state.analysis = analysis;
-    state.suggestions = analysis.suggestedNodes || [];
-
-    if (analysis.title && story && (!story.title || /^Story \d+$/.test(story.title))) {
-      story.title = analysis.title;
-    }
-
-    render();
+    state.preview = result.render;
+    state.previewIssues = result.issues || [];
+    state.previewStatus = result.validation.ok
+      ? '單卡 validate 通過。'
+      : `單卡 validate 失敗：${result.validation.body}`;
+    renderPreviewOnly();
   }
 
-  function applySuggestion(index) {
-    const suggestion = state.suggestions[index];
-    if (!suggestion) return;
-    addNode(suggestion.type, JSON.parse(JSON.stringify(suggestion)));
-    state.suggestions.splice(index, 1);
-    render();
-  }
-
-  function applyAllSuggestions() {
-    if (!state.suggestions.length) return;
-    const items = state.suggestions.map((item) => JSON.parse(JSON.stringify(item)));
-    items.forEach((item) => addNode(item.type, item));
-    state.suggestions = [];
-    state.drawerOpen = false;
-    render();
-  }
-
-  function clearSuggestions() {
-    state.suggestions = [];
-    state.analysis = null;
-    render();
-  }
-
-  function openDrawer() {
-    state.drawerOpen = true;
-    renderDrawer();
-  }
-
-  function closeDrawer() {
-    state.drawerOpen = false;
-    renderDrawer();
-  }
-
-  function renderStoryTabs() {
-    storyTabs.innerHTML = '';
-    state.stories.forEach((story) => {
-      const button = document.createElement('button');
-      button.className = `story-pill ${story.id === state.activeStoryId ? 'active' : ''}`;
-      button.textContent = story.title || 'Untitled';
-      button.onclick = () => setActiveStory(story.id);
-      storyTabs.appendChild(button);
+  async function handleTestNode() {
+    const story = currentStory();
+    const node = currentNode();
+    if (!story || !node) return;
+    await handleSaveStory();
+    const result = await api(`/stories/${story.id}/test/node`, {
+      method: 'POST',
+      body: JSON.stringify({ nodeId: node.id })
     });
+    state.previewStatus = `已送出單卡測試。request id: ${result.broadcast.requestId || 'n/a'}`;
+    render();
   }
 
-  function renderPalette() {
-    palette.innerHTML = '';
-    moduleCatalog.forEach((module) => {
-      const button = document.createElement('button');
-      button.className = 'palette-item';
-      button.dataset.type = module.type;
-      button.innerHTML = `
-        <div class="palette-icon">${module.icon}</div>
-        <div>
-          <div class="palette-label">${module.label}</div>
-          <div class="palette-desc">${module.description}</div>
-        </div>
-      `;
-      button.onclick = () => addNode(module.type);
-      palette.appendChild(button);
+  async function handleSimulateMessage() {
+    const text = dom.simulateText.value.trim();
+    const sessionKey = dom.simulateSessionKey.value.trim() || 'local-preview';
+    const result = await api('/runtime/simulate', {
+      method: 'POST',
+      body: JSON.stringify({ text, sessionKey })
     });
+    dom.simulationOutput.textContent = JSON.stringify(result.simulation, null, 2);
   }
 
-  function renderCharacterLibrary() {
-    characterLibrary.innerHTML = '';
-    const story = activeStory();
-    if (!story) {
-      characterLibrary.innerHTML = '<div class="empty">先建立 Story 才能設定角色。</div>';
-      return;
-    }
-
-    ensureStoryDefaults(story);
-
-    story.characters.forEach((character) => {
-      const card = document.createElement('div');
-      card.className = 'character-card';
-      const avatarHtml = character.avatar
-        ? `<img class="character-avatar" src="${escapeHtml(character.avatar)}" alt="">`
-        : `<div class="character-avatar placeholder">${escapeHtml(character.name.slice(0, 1) || '角')}</div>`;
-      card.innerHTML = `
-        ${avatarHtml}
-        <div>
-          <div class="character-title">${escapeHtml(character.name)}</div>
-          <div class="character-meta">
-            <span class="meta-pill">${character.role === 'lead' ? '主角' : '配角'}</span>
-            <span class="meta-pill">${character.placement === 'left-lower' ? '左下' : character.placement === 'right-lower' ? '右下' : character.placement}</span>
-          </div>
-        </div>
-      `;
-
-      const controls = document.createElement('div');
-      controls.className = 'field';
-      const content = card.children[1];
-
-      content.appendChild(field('角色名稱', textInput(character.name, (value) => {
-        character.name = value || '新角色';
-        render();
-      })));
-
-      const roleSelectEl = document.createElement('select');
-      roleSelectEl.innerHTML = `
-        <option value="lead">主角</option>
-        <option value="support">配角</option>
-      `;
-      roleSelectEl.value = character.role || 'support';
-      roleSelectEl.onchange = (event) => {
-        character.role = event.target.value;
-        if (character.role === 'lead') {
-          character.placement = 'left-lower';
-        } else if (character.placement === 'left-lower' && character.id !== 'char-bear') {
-          character.placement = 'right-lower';
-        }
-        render();
-      };
-      content.appendChild(field('角色定位', roleSelectEl));
-
-      const placementSelect = document.createElement('select');
-      placementSelect.innerHTML = `
-        <option value="left-lower">左側下三分之二</option>
-        <option value="right-lower">右側下三分之二</option>
-        <option value="left-upper">左側上方</option>
-        <option value="right-upper">右側上方</option>
-      `;
-      placementSelect.value = character.placement || 'right-lower';
-      placementSelect.onchange = (event) => {
-        character.placement = event.target.value;
-        render();
-      };
-      content.appendChild(field('站位規則', placementSelect));
-
-      content.appendChild(field('角色頭像', uploadField(character.avatar, (url) => {
-        character.avatar = url;
-        render();
-      })));
-      characterLibrary.appendChild(card);
+  async function handleResetSimulation() {
+    const sessionKey = dom.simulateSessionKey.value.trim() || 'local-preview';
+    const result = await api('/runtime/reset', {
+      method: 'POST',
+      body: JSON.stringify({ sessionKey })
     });
+    dom.simulateSessionKey.value = 'local-preview';
+    dom.simulateText.value = '開始故事';
+    dom.simulationOutput.textContent = JSON.stringify(result.simulation, null, 2);
   }
 
-  function addCharacter() {
-    const story = activeStory();
+  async function handleAddNode(type) {
+    const story = currentStory();
     if (!story) return;
-    ensureStoryDefaults(story);
-    story.characters.push({
-      id: uid('char'),
-      name: `角色 ${story.characters.length + 1}`,
-      avatar: '',
-      placement: 'right-lower',
-      role: 'support'
+    const result = await api(`/stories/${story.id}/nodes`, {
+      method: 'POST',
+      body: JSON.stringify({ type })
     });
+    state.storyDetail.story = result.story;
+    state.currentNodeId = result.node.id;
+    resetPreviewSelection();
     render();
+    await refreshPreview();
   }
 
-  function renderStoryboardMeta(story) {
-    if (!story) {
-      storyboardMeta.textContent = '';
-      return;
-    }
-
-    storyboardMeta.textContent = `${story.nodes.length} 幕 · ${countNodes(story.nodes, 'choice')} 個分支 · ${countNodes(story.nodes, 'carousel')} 個多頁訊息`;
-  }
-
-  function renderStoryboard() {
-    storyboard.innerHTML = '';
-    const story = activeStory();
-    renderStoryboardMeta(story);
-
-    if (!story || !story.nodes.length) {
-      storyboard.innerHTML = '<div class="empty">這裡還沒有任何一幕。先從左邊加入模組，或先匯入劇本生成草稿。</div>';
-      return;
-    }
-
-    story.nodes.forEach((node, index) => {
-      ensureNodeDefaults(node);
-      const info = nodeTypeInfo(node.type);
-
-      const card = document.createElement('article');
-      card.className = `story-node ${node.id === state.activeNodeId ? 'active' : ''}`;
-      card.draggable = true;
-      card.dataset.nodeId = node.id;
-
-      const thumb = node.image ? `<img class="node-thumb" src="${escapeHtml(node.image)}" alt="">` : '';
-      const pages = node.type === 'carousel'
-        ? `<div class="story-node-pages">${node.pages.map((page, pageIndex) => `<span class="page-chip">第 ${pageIndex + 1} 頁</span>`).join('')}</div>`
-        : '';
-      const branches = node.type === 'choice'
-        ? `<div class="story-node-branches">
-            <span class="branch-chip">A: ${escapeHtml(node.optionA.label)}</span>
-            <span class="branch-chip">B: ${escapeHtml(node.optionB.label)}</span>
-          </div>`
-        : '';
-
-      const links = buildNodeLinks(node);
-      const linksHtml = links.length
-        ? `<div class="node-links">${links.map((link) => `<span class="link-chip">${escapeHtml(link)}</span>`).join('')}</div>`
-        : '';
-
-      card.innerHTML = `
-        <div class="story-node-header">
-          <span class="type-pill" style="background:${info.color}18;color:${info.color};">${info.icon} ${info.label}</span>
-          <span class="node-index">第 ${index + 1} 幕</span>
-        </div>
-        <div class="story-node-title">${escapeHtml(node.title || info.label)}</div>
-        <div class="story-node-summary">${escapeHtml(truncate(nodeSummary(node), 180))}</div>
-        ${thumb}
-        ${pages}
-        ${branches}
-        ${linksHtml}
-        <div class="inline-actions">
-          <button class="mini-btn" data-action="duplicate">複製</button>
-          <button class="mini-btn" data-action="delete">刪除</button>
-        </div>
-      `;
-
-      card.onclick = (event) => {
-        const action = event.target?.dataset?.action;
-        if (action === 'delete') {
-          event.stopPropagation();
-          removeNode(node.id);
-          return;
-        }
-        if (action === 'duplicate') {
-          event.stopPropagation();
-          duplicateNode(node);
-          return;
-        }
-        state.activeNodeId = node.id;
-        render();
-      };
-
-      card.addEventListener('dragstart', () => {
-        state.dragNodeId = node.id;
-        card.classList.add('dragging');
+  let previewTimer = null;
+  function schedulePreview() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => {
+      refreshPreview().catch((error) => {
+        state.previewStatus = error.message;
+        renderPreviewOnly();
       });
+    }, 120);
+  }
 
-      card.addEventListener('dragend', () => {
-        state.dragNodeId = null;
-        card.classList.remove('dragging');
-      });
-
-      card.addEventListener('dragover', (event) => event.preventDefault());
-      card.addEventListener('drop', (event) => {
-        event.preventDefault();
-        reorderNodes(state.dragNodeId, node.id);
-      });
-
-      storyboard.appendChild(card);
+  async function refreshPreview() {
+    const story = currentStory();
+    const node = currentNode();
+    if (!story || !node) {
+      state.preview = null;
+      state.previewStatus = '尚未載入節點。';
+      state.previewIssues = [];
+      renderPreviewOnly();
+      return;
+    }
+    const result = await api(`/stories/${story.id}/render/draft`, {
+      method: 'POST',
+      body: JSON.stringify({
+        story,
+        globalSettings: state.globalSettings,
+        nodeId: node.id
+      })
     });
-  }
-
-  function buildNodeLinks(node) {
-    if (node.type === 'choice') {
-      return [
-        `A -> ${targetTitle(node.optionA.nextNodeId)}`,
-        `B -> ${targetTitle(node.optionB.nextNodeId)}`
-      ];
-    }
-    if (node.nextNodeId) {
-      return [`Next -> ${targetTitle(node.nextNodeId)}`];
-    }
-    return [];
-  }
-
-  function renderDrawer() {
-    drawerShell.classList.toggle('open', state.drawerOpen);
-    renderSuggestions();
-    renderAnalysis();
-  }
-
-  function renderSuggestions() {
-    suggestionList.innerHTML = '';
-
-    if (!state.suggestions.length) {
-      suggestionList.innerHTML = '<div class="empty">分析後的 AI 劇本草稿會先出現在這裡。</div>';
-      return;
-    }
-
-    state.suggestions.forEach((node, index) => {
-      ensureNodeDefaults(node);
-      const info = nodeTypeInfo(node.type);
-      const card = document.createElement('article');
-      card.className = 'story-node';
-      card.innerHTML = `
-        <div class="story-node-header">
-          <span class="type-pill" style="background:${info.color}18;color:${info.color};">${info.icon} ${info.label}</span>
-          <span class="node-index">草稿 ${index + 1}</span>
-        </div>
-        <div class="story-node-title">${escapeHtml(node.title || info.label)}</div>
-        <div class="story-node-summary">${escapeHtml(truncate(nodeSummary(node), 160))}</div>
-        <div class="inline-actions">
-          <button class="mini-btn" data-add="${index}">加入故事軸</button>
-        </div>
-      `;
-      card.querySelector('[data-add]').onclick = () => applySuggestion(index);
-      suggestionList.appendChild(card);
-    });
-  }
-
-  function renderAnalysis() {
-    analysisPanel.innerHTML = '';
-    if (!state.analysis) {
-      analysisPanel.innerHTML = '<div class="empty">分析後，這裡會顯示劇本輪廓與建議分鏡。</div>';
-      return;
-    }
-
-    const wrap = document.createElement('div');
-    wrap.innerHTML = `
-      <div class="analysis-summary">
-        <div class="stat"><strong>${state.analysis.comparison.existingModules}</strong>現有模組</div>
-        <div class="stat"><strong>${state.analysis.comparison.suggestedModules}</strong>建議模組</div>
-        <div class="stat"><strong>${state.analysis.sections.length}</strong>劇本段落</div>
-      </div>
-    `;
-
-    const deltaList = document.createElement('div');
-    deltaList.className = 'delta-list';
-    state.analysis.comparison.deltas.forEach((delta) => {
-      const item = document.createElement('div');
-      item.className = 'delta-item';
-      item.textContent = `${nodeTypeInfo(delta.type).label}: 目前 ${delta.existing} 個，建議 ${delta.suggested} 個`;
-      deltaList.appendChild(item);
-    });
-
-    const outlineList = document.createElement('div');
-    outlineList.className = 'outline-list';
-    state.analysis.sections.slice(0, 10).forEach((section) => {
-      const item = document.createElement('div');
-      item.className = 'outline-item';
-      item.innerHTML = `<strong>${escapeHtml(section.key)}</strong><br>${escapeHtml(section.preview)}`;
-      outlineList.appendChild(item);
-    });
-
-    wrap.appendChild(deltaList);
-    wrap.appendChild(outlineList);
-    analysisPanel.appendChild(wrap);
-  }
-
-  function renderScenePreview() {
-    scenePreview.innerHTML = '';
-    const node = activeNode();
-    if (!node) {
-      scenePreview.innerHTML = '<div class="empty">先從中間故事軸選一幕，這裡就會顯示 LINE 預覽。</div>';
-      return;
-    }
-
-    scenePreview.appendChild(buildNodePreview(node));
-  }
-
-  function renderNodeSelect(value, onChange) {
-    const story = activeStory();
-    const select = document.createElement('select');
-    select.innerHTML = `<option value="">未連接</option>${(story?.nodes || []).map((node) => `<option value="${node.id}">${escapeHtml(node.title || node.id)}</option>`).join('')}`;
-    select.value = value || '';
-    select.onchange = (event) => onChange(event.target.value);
-    return select;
-  }
-
-  function field(labelText, control) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'field';
-    const label = document.createElement('label');
-    label.textContent = labelText;
-    wrapper.appendChild(label);
-    wrapper.appendChild(control);
-    return wrapper;
-  }
-
-  function textInput(value, onChange) {
-    const input = document.createElement('input');
-    input.value = value || '';
-    input.oninput = (event) => onChange(event.target.value);
-    return input;
-  }
-
-  function textArea(value, onChange) {
-    const input = document.createElement('textarea');
-    input.value = value || '';
-    input.oninput = (event) => onChange(event.target.value);
-    return input;
-  }
-
-  function uploadField(currentValue, onDone) {
-    const wrapper = document.createElement('div');
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const { asset } = await uploadFile(file);
-      onDone(asset.url);
-      render();
-    };
-
-    wrapper.appendChild(input);
-    if (currentValue) {
-      const image = document.createElement('img');
-      image.src = currentValue;
-      image.className = 'node-thumb';
-      wrapper.appendChild(image);
-    }
-    return wrapper;
-  }
-
-  function renderInspector() {
-    nodeInspector.innerHTML = '';
-    const story = activeStory();
-    const node = activeNode();
-
-    if (!story) {
-      nodeInspector.className = 'empty';
-      nodeInspector.innerHTML = '請先建立 Story。';
-      return;
-    }
-
-    if (!node) {
-      nodeInspector.className = '';
-      const storyCard = document.createElement('div');
-      storyCard.className = 'editor-layout';
-      storyCard.appendChild(field('Story 名稱', textInput(story.title || '', (value) => {
-        story.title = value;
-        renderStoryTabs();
-        renderPreviewTab();
-      })));
-      storyCard.appendChild(field('Story 描述', textArea(story.description || '', (value) => {
-        story.description = value;
-        renderPreviewTab();
-      })));
-      nodeInspector.appendChild(storyCard);
-      return;
-    }
-
-    nodeInspector.className = '';
-    ensureNodeDefaults(node);
-
-    const editor = document.createElement('div');
-    editor.className = 'editor-layout';
-    const info = nodeTypeInfo(node.type);
-
-    const intro = document.createElement('div');
-    intro.className = 'hint';
-    intro.textContent = `正在編輯：${info.label}。先確認上面的 LINE 預覽，再調整這一幕的內容與連線。`;
-    editor.appendChild(intro);
-
-    editor.appendChild(field('模組名稱', textInput(node.title, (value) => {
-      node.title = value;
-      render();
-    })));
-
-    if (node.type === 'choice') {
-      editor.appendChild(field('提問內容', textArea(node.text, (value) => {
-        node.text = value;
-        render();
-      })));
-      editor.appendChild(field('背景圖', uploadField(node.image, (url) => {
-        node.image = url;
-        render();
-      })));
-      editor.appendChild(field('選項 A 標籤', textInput(node.optionA.label, (value) => {
-        node.optionA.label = value;
-        render();
-      })));
-      editor.appendChild(field('選項 A 回應', textArea(node.optionA.feedback, (value) => {
-        node.optionA.feedback = value;
-      })));
-      editor.appendChild(field('選項 A 指向', renderNodeSelect(node.optionA.nextNodeId, (value) => {
-        node.optionA.nextNodeId = value;
-        render();
-      })));
-      editor.appendChild(field('選項 B 標籤', textInput(node.optionB.label, (value) => {
-        node.optionB.label = value;
-        render();
-      })));
-      editor.appendChild(field('選項 B 回應', textArea(node.optionB.feedback, (value) => {
-        node.optionB.feedback = value;
-      })));
-      editor.appendChild(field('選項 B 指向', renderNodeSelect(node.optionB.nextNodeId, (value) => {
-        node.optionB.nextNodeId = value;
-        render();
-      })));
-    } else if (node.type === 'carousel') {
-      node.pages.forEach((page, index) => {
-        const pageCard = document.createElement('div');
-        pageCard.className = 'panel-card';
-        pageCard.style.margin = '0';
-        pageCard.appendChild(field(`第 ${index + 1} 頁標題`, textInput(page.title, (value) => {
-          page.title = value;
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁角色名稱`, textInput(page.speaker, (value) => {
-          page.speaker = value;
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁主講角色`, roleSelect(page.speakerCharacterId, (value) => {
-          page.speakerCharacterId = value;
-          page.speaker = characterLabel(value, page.speaker || '旁白');
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁陪襯角色`, roleSelect(page.companionCharacterId, (value) => {
-          page.companionCharacterId = value;
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁文字`, textArea(page.text, (value) => {
-          page.text = value;
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁字體`, fontFamilySelect(page.fontFamily, (value) => {
-          page.fontFamily = value;
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁字級`, textSizeSelect(page.textSize, (value) => {
-          page.textSize = value;
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁姓名牌大小`, nameplateSizeSelect(page.nameplateSize, (value) => {
-          page.nameplateSize = value;
-          render();
-        })));
-        pageCard.appendChild(field(`第 ${index + 1} 頁大圖`, uploadField(page.image, (url) => {
-          page.image = url;
-          render();
-        })));
-        const removeButton = document.createElement('button');
-        removeButton.className = 'button soft';
-        removeButton.textContent = '刪掉這一頁';
-        removeButton.onclick = () => {
-          node.pages.splice(index, 1);
-          if (!node.pages.length) node.pages.push(emptyPage(1));
-          render();
-        };
-        pageCard.appendChild(removeButton);
-        editor.appendChild(pageCard);
-      });
-
-      const addPageButton = document.createElement('button');
-      addPageButton.className = 'button secondary';
-      addPageButton.textContent = '新增一頁';
-      addPageButton.onclick = () => {
-        node.pages.push(emptyPage(node.pages.length + 1));
-        render();
-      };
-      editor.appendChild(addPageButton);
-      editor.appendChild(field('下一個模組', renderNodeSelect(node.nextNodeId, (value) => {
-        node.nextNodeId = value;
-        render();
-      })));
-    } else {
-      if (node.type === 'dialogue') {
-        editor.appendChild(field('主講角色', roleSelect(node.speakerCharacterId, (value) => {
-          node.speakerCharacterId = value;
-          node.speaker = characterLabel(value, node.speaker || '角色');
-          render();
-        }, { allowEmpty: false })));
-        editor.appendChild(field('陪襯角色', roleSelect(node.companionCharacterId, (value) => {
-          node.companionCharacterId = value;
-          render();
-        })));
-      } else {
-        editor.appendChild(field('角色名稱', textInput(node.speaker, (value) => {
-          node.speaker = value;
-          render();
-        })));
-      }
-      editor.appendChild(field('文字內容', textArea(node.text, (value) => {
-        node.text = value;
-        render();
-      })));
-      editor.appendChild(field('字體', fontFamilySelect(node.fontFamily, (value) => {
-        node.fontFamily = value;
-        render();
-      })));
-      editor.appendChild(field('字級', textSizeSelect(node.textSize, (value) => {
-        node.textSize = value;
-        render();
-      })));
-      editor.appendChild(field('姓名牌大小', nameplateSizeSelect(node.nameplateSize, (value) => {
-        node.nameplateSize = value;
-        render();
-      })));
-      editor.appendChild(field(node.type === 'fullscreen' ? '滿版圖' : node.type === 'dialogue' ? '場景大圖' : '圖片', uploadField(node.image, (url) => {
-        node.image = url;
-        render();
-      })));
-      editor.appendChild(field('下一個模組', renderNodeSelect(node.nextNodeId, (value) => {
-        node.nextNodeId = value;
-        render();
-      })));
-    }
-
-    nodeInspector.appendChild(editor);
-  }
-
-  function buildAvatar(characterId, visibleName, forceNameplate, nameplateSize = 'lg') {
-    if (!characterId) return '';
-    const character = characterById(characterId);
-    if (!character) return '';
-    const avatar = character.avatar
-      ? `<img src="${escapeHtml(character.avatar)}" alt="${escapeHtml(character.name)}">`
-      : `<div class="rpg-avatar-fallback">${escapeHtml(character.name.slice(0, 1) || '角')}</div>`;
-    const showNameplate = forceNameplate || false;
-    const nameplatePreset = previewNameplateSize(nameplateSize);
-    const nameplate = showNameplate
-      ? `<div class="rpg-nameplate ${roleNameplateClass(characterId)}" style="font-size:${nameplatePreset.fontSize};min-width:${nameplatePreset.minWidth};padding:${nameplatePreset.padding};">${escapeHtml(visibleName || character.name)}</div>`
-      : '';
-    return `
-      <div class="rpg-avatar ${escapeHtml(character.placement)}">
-        ${avatar}
-        ${nameplate}
-      </div>
-    `;
-  }
-
-  function buildRpgScene({ image, speakerCharacterId, companionCharacterId, speaker, text, metaLabel, fontFamily, textSize, nameplateSize }) {
-    const effectiveSpeakerId = speakerCharacterId || inferCharacterIdFromSpeaker(speaker);
-    const dialogueStyle = `font-family:${previewFontFamily(fontFamily)};font-size:${previewTextSize(textSize)};text-align:center;display:flex;align-items:center;justify-content:center;min-height:118px;`;
-    const scene = document.createElement('article');
-    scene.className = 'rpg-scene';
-    scene.innerHTML = `
-      <div class="rpg-stage">
-        ${image ? `<img class="rpg-scene-image" src="${escapeHtml(image)}" alt="">` : `<div class="rpg-scene-image"></div>`}
-        <div class="rpg-cast">
-          ${buildAvatar(effectiveSpeakerId, speaker || characterLabel(effectiveSpeakerId, '角色'), true, nameplateSize)}
-          ${companionCharacterId && companionCharacterId !== effectiveSpeakerId ? buildAvatar(companionCharacterId, '', false, nameplateSize) : ''}
-        </div>
-      </div>
-      <div class="rpg-dialogue">
-        <div class="rpg-dialogue-text" style="${dialogueStyle}">${escapeHtml(text || '')}</div>
-        <div class="rpg-dialogue-meta">
-          ${metaLabel ? `<span class="rpg-meta-pill">${escapeHtml(metaLabel)}</span>` : ''}
-        </div>
-      </div>
-    `;
-    return scene;
-  }
-
-  function buildNodePreview(node) {
-    ensureNodeDefaults(node);
-
-    if (node.type === 'dialogue') {
-      return buildRpgScene({
-        image: node.image,
-        speakerCharacterId: node.speakerCharacterId,
-        companionCharacterId: node.companionCharacterId,
-        speaker: node.speaker || characterLabel(node.speakerCharacterId, '角色'),
-        text: node.text,
-        metaLabel: 'RPG 對話',
-        fontFamily: node.fontFamily,
-        textSize: node.textSize,
-        nameplateSize: node.nameplateSize
-      });
-    }
-
-    if (node.type === 'carousel') {
-      const wrap = document.createElement('div');
-      wrap.className = 'line-carousel';
-      node.pages.forEach((page) => {
-        const pageEl = buildRpgScene({
-          image: page.image,
-          speakerCharacterId: page.speakerCharacterId,
-          companionCharacterId: page.companionCharacterId,
-          speaker: page.speaker || characterLabel(page.speakerCharacterId, '旁白'),
-          text: page.text,
-          metaLabel: page.title || '多頁訊息',
-          fontFamily: page.fontFamily,
-          textSize: page.textSize,
-          nameplateSize: page.nameplateSize
-        });
-        wrap.appendChild(pageEl);
-      });
-      return wrap;
-    }
-
-    if (node.type === 'choice') {
-      const card = document.createElement('article');
-      card.className = 'line-card';
-      card.innerHTML = `
-        ${node.image ? `<img class="line-card-image" src="${escapeHtml(node.image)}" alt="">` : ''}
-        <div class="line-card-body">
-          <span class="line-label">選項分支</span>
-          <div class="line-text">${escapeHtml(node.text)}</div>
-          <div class="line-actions">
-            <button class="line-action">${escapeHtml(node.optionA.label)}</button>
-            <button class="line-action">${escapeHtml(node.optionB.label)}</button>
-          </div>
-        </div>
-      `;
-      return card;
-    }
-
-    if (node.type === 'fullscreen') {
-      const full = document.createElement('article');
-      full.className = 'line-fullscreen';
-      full.innerHTML = `
-        ${node.image ? `<img class="line-fullscreen-image" src="${escapeHtml(node.image)}" alt="">` : ''}
-        <div class="line-fullscreen-body">
-          <span class="line-label">${escapeHtml(node.speaker || '旁白')}</span>
-          <div class="line-text">${escapeHtml(node.text)}</div>
-        </div>
-      `;
-      return full;
-    }
-
-    const card = document.createElement('article');
-    card.className = 'line-card';
-    card.innerHTML = `
-      ${node.image ? `<img class="line-card-image" src="${escapeHtml(node.image)}" alt="">` : ''}
-      <div class="line-card-body">
-        <span class="line-label">${escapeHtml(node.speaker || '旁白')}</span>
-        <div class="line-text">${escapeHtml(node.text)}</div>
-      </div>
-    `;
-    return card;
-  }
-
-  function renderPreviewTab() {
-    const story = activeStory();
-    previewStructure.innerHTML = '';
-    previewChat.innerHTML = '';
-    previewJson.textContent = story ? JSON.stringify(story, null, 2) : '';
-
-    if (!story) {
-      previewStructure.innerHTML = '<div class="empty">先建立 Story。</div>';
-      previewChat.innerHTML = '<div class="empty">先建立 Story。</div>';
-      return;
-    }
-
-    if (!story.nodes.length) {
-      previewStructure.innerHTML = '<div class="empty">還沒有任何一幕。</div>';
-      previewChat.innerHTML = '<div class="empty">還沒有任何一幕可以預覽。</div>';
-      return;
-    }
-
-    const structureWrap = document.createElement('div');
-    structureWrap.className = 'section-stack';
-
-    story.nodes.forEach((node, index) => {
-      ensureNodeDefaults(node);
-      const info = nodeTypeInfo(node.type);
-
-      const item = document.createElement('article');
-      item.className = 'story-node';
-      item.style.margin = '0';
-      item.innerHTML = `
-        <div class="story-node-header">
-          <span class="type-pill" style="background:${info.color}18;color:${info.color};">${info.icon} ${info.label}</span>
-          <span class="node-index">第 ${index + 1} 幕</span>
-        </div>
-        <div class="story-node-title">${escapeHtml(node.title)}</div>
-        <div class="story-node-summary">${escapeHtml(truncate(nodeSummary(node), 140))}</div>
-      `;
-      structureWrap.appendChild(item);
-
-      const chatItem = document.createElement('div');
-      chatItem.className = 'chat-item';
-      chatItem.innerHTML = `
-        <div class="chat-avatar" style="background:${info.color};">${info.icon}</div>
-        <div class="chat-bubble"></div>
-      `;
-      chatItem.querySelector('.chat-bubble').appendChild(buildNodePreview(node));
-      previewChat.appendChild(chatItem);
-    });
-
-    previewStructure.appendChild(structureWrap);
-  }
-
-  function renderTopTab() {
-    document.querySelectorAll('[data-top-tab]').forEach((button) => {
-      button.classList.toggle('active', button.dataset.topTab === state.activeTopTab);
-    });
-    createView.classList.toggle('active', state.activeTopTab === 'create');
-    previewView.classList.toggle('active', state.activeTopTab === 'preview');
+    state.preview = result.render;
+    state.previewIndex = Math.min(state.previewIndex, Math.max(0, (result.render?.models?.length || 1) - 1));
+    state.previewIssues = result.issues || [];
+    state.previewStatus = result.issues?.length
+      ? `目前有 ${result.issues.length} 個問題需要處理。`
+      : '預覽已更新。';
+    renderPreviewOnly();
   }
 
   function render() {
-    renderTopTab();
-    renderStoryTabs();
-    renderCharacterLibrary();
-    renderPalette();
-    renderStoryboard();
-    renderScenePreview();
-    renderInspector();
-    renderPreviewTab();
-    renderDrawer();
+    renderStories();
   }
 
-  function countNodes(nodes, type) {
-    return nodes.filter((node) => node.type === type).length;
-  }
+  function renderStories() {
+    dom.storyStageTabs.forEach((button) => button.classList.toggle('active', button.dataset.storyStage === state.storyStage));
+    Object.entries(dom.storyStagePanels).forEach(([key, panel]) => {
+      if (panel) panel.classList.toggle('active', key === state.storyStage);
+    });
+    dom.storyCount.textContent = `${state.stories.length} 個故事`;
+    dom.storyList.innerHTML = state.stories.map((story, index) => `
+      <button class="story-tab-pill ${story.id === state.currentStoryId ? 'active' : ''}" data-story-id="${story.id}">
+        <span class="story-tab-index">Story ${index + 1}</span>
+        <span class="story-tab-title">${escapeHtml(story.title)}</span>
+      </button>
+    `).join('');
+    dom.storyList.querySelectorAll('[data-story-id]').forEach((card) => {
+      card.addEventListener('click', async () => {
+        await loadStory(card.dataset.storyId);
+        render();
+      });
+    });
 
-  function initResizableColumns() {
-    const root = document.documentElement;
-    const minLeft = 14;
-    const minCenter = 30;
-    const minRight = 24;
-
-    function startResize(which, event) {
-      event.preventDefault();
-      const startX = event.clientX;
-      const rect = workspace.getBoundingClientRect();
-      const styles = getComputedStyle(root);
-      const startLeft = parseFloat(styles.getPropertyValue('--left-width'));
-      const startCenter = parseFloat(styles.getPropertyValue('--center-width'));
-      const startRight = parseFloat(styles.getPropertyValue('--right-width'));
-
-      function onMove(moveEvent) {
-        const deltaPercent = ((moveEvent.clientX - startX) / rect.width) * 100;
-        let left = startLeft;
-        let center = startCenter;
-        let right = startRight;
-
-        if (which === 'left') {
-          left = startLeft + deltaPercent;
-          center = startCenter - deltaPercent;
-
-          if (left < minLeft) {
-            center -= minLeft - left;
-            left = minLeft;
-          }
-          if (center < minCenter) {
-            left -= minCenter - center;
-            center = minCenter;
-          }
-        } else {
-          center = startCenter + deltaPercent;
-          right = startRight - deltaPercent;
-
-          if (center < minCenter) {
-            right -= minCenter - center;
-            center = minCenter;
-          }
-          if (right < minRight) {
-            center -= minRight - right;
-            right = minRight;
-          }
-        }
-
-        left = clamp(left, minLeft, 100 - minCenter - minRight);
-        center = clamp(center, minCenter, 100 - minLeft - minRight);
-        right = 100 - left - center;
-
-        if (right < minRight) {
-          right = minRight;
-          center = 100 - left - right;
-        }
-
-        root.style.setProperty('--left-width', `${left}%`);
-        root.style.setProperty('--center-width', `${center}%`);
-        root.style.setProperty('--right-width', `${right}%`);
-      }
-
-      function onUp() {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      }
-
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
+    const story = currentStory();
+    if (!story) {
+      dom.editorStoryTitle.textContent = '未選擇故事';
+      dom.editorStoryMeta.textContent = '';
+      dom.storyProgressGrid.innerHTML = '';
+      dom.nodeGraph.innerHTML = '';
+      dom.nodeEditorEmpty.classList.remove('hidden');
+      dom.nodeEditorShell.classList.add('hidden');
+      return;
     }
 
-    document.querySelectorAll('[data-gutter]').forEach((gutter) => {
-      gutter.addEventListener('mousedown', (event) => startResize(gutter.dataset.gutter, event));
+    const triggerBinding = currentTriggerBinding();
+    dom.editorStoryTitle.textContent = story.title;
+    dom.editorStoryMeta.textContent = `start: ${story.startNodeId || '未設定'} / trigger: ${triggerBinding?.keyword || '未設定'}`;
+    dom.storyTitleInput.value = story.title || '';
+    dom.storyDescriptionInput.value = story.description || '';
+    dom.storyTriggerInput.value = triggerBinding?.keyword || '';
+    dom.storyStartNode.innerHTML = story.nodes.map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title)} (${escapeHtml(node.id)})</option>`).join('');
+    dom.storyStartNode.value = story.startNodeId || story.nodes[0]?.id || '';
+    dom.scriptImportText.value = story.draftImport?.sourceText || '';
+    dom.draftImportStatus.textContent = story.draftImport?.importedAt
+      ? `狀態：${story.draftImport.status} / 節點：${story.draftImport.nodes.length} / 未綁定角色：${story.draftImport.unboundRoles.length}`
+      : '尚未匯入劇本。';
+    renderStoryProgress(story);
+    state.currentDraftNodeId = state.currentDraftNodeId && story.draftImport?.nodes?.some((node) => node.id === state.currentDraftNodeId)
+      ? state.currentDraftNodeId
+      : (story.draftImport?.nodes?.[0]?.id || '');
+
+    dom.nodeGraph.innerHTML = renderNodeGraph(story);
+    dom.nodeGraph.querySelectorAll('.graph-node[data-node-id]').forEach((card) => {
+      card.addEventListener('click', () => {
+        state.currentNodeId = card.dataset.nodeId;
+        resetPreviewSelection();
+        renderStories();
+        refreshPreview().catch(console.error);
+      });
+    });
+    dom.nodeGraph.querySelectorAll('[data-node-action]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const action = button.dataset.nodeAction;
+        const nodeId = button.dataset.nodeId;
+        if (action === 'move-prev') {
+          moveStoryNode(nodeId, -1);
+        } else if (action === 'move-next') {
+          moveStoryNode(nodeId, 1);
+        } else if (action === 'delete') {
+          deleteStoryNode(nodeId);
+        }
+      });
+    });
+    renderStoryCharacters(story);
+    renderDraftImport(story);
+    renderDraftEditor(story);
+    renderNodeEditor();
+    renderPreviewOnly();
+  }
+
+  function renderStoryProgress(story) {
+    const unboundCount = story.draftImport?.unboundRoles?.length || 0;
+    const draftCount = story.draftImport?.nodes?.length || 0;
+    const appliedCount = (story.draftImport?.nodes || []).filter((node) => node.status === 'applied').length;
+    const summary = [
+      ['角色數', story.characters?.length || 0],
+      ['草稿節點', draftCount],
+      ['未綁定角色', unboundCount],
+      ['已套用節點', appliedCount]
+    ];
+    dom.storyProgressGrid.innerHTML = summary.map(([label, value]) => `
+      <article class="progress-card">
+        <div class="subtle">${escapeHtml(label)}</div>
+        <strong>${escapeHtml(value)}</strong>
+      </article>
+    `).join('');
+  }
+
+  function renderStoryCharacters(story) {
+    dom.storyCharacterList.innerHTML = '';
+    const usageMap = new Map();
+    story.nodes.forEach((node) => {
+      [node.speakerCharacterId, node.companionCharacterId].filter(Boolean).forEach((characterId) => {
+        const current = usageMap.get(characterId) || [];
+        current.push(node.id);
+        usageMap.set(characterId, current);
+      });
+      (node.pages || []).forEach((page) => {
+        [page.speakerCharacterId, page.companionCharacterId].filter(Boolean).forEach((characterId) => {
+          const current = usageMap.get(characterId) || [];
+          current.push(`${node.id}/${page.id}`);
+          usageMap.set(characterId, current);
+        });
+      });
+    });
+
+    story.characters
+      .map((character, sourceIndex) => ({ character, sourceIndex }))
+      .sort((a, b) => (a.character.sortOrder || 0) - (b.character.sortOrder || 0))
+      .forEach(({ character, sourceIndex }) => {
+      const card = document.createElement('article');
+      card.className = 'character-card';
+      card.dataset.characterIndex = String(sourceIndex);
+      const usage = usageMap.get(character.id) || [];
+      const header = document.createElement('div');
+      header.className = 'character-header';
+      header.innerHTML = `
+        <div class="character-title-wrap">
+          <div class="story-title">${escapeHtml(character.name)}</div>
+          <div class="subtle" data-usage-count="${usage.length}">分類：${escapeHtml(character.category || 'supporting')} / 使用節點：${usage.length}</div>
+        </div>
+        <span class="pill">${escapeHtml(character.id)}</span>
+      `;
+      card.appendChild(header);
+
+      const preview = document.createElement('div');
+      preview.className = 'character-preview';
+      preview.dataset.characterPreview = String(sourceIndex);
+      preview.innerHTML = renderCharacterPreviewMarkup(character);
+
+      const editorGrid = document.createElement('div');
+      editorGrid.className = 'character-editor-grid';
+
+      const previewShell = document.createElement('div');
+      previewShell.className = 'character-preview-shell';
+      previewShell.innerHTML = `<div class="character-preview-label">即時角色預覽</div>`;
+      previewShell.appendChild(preview);
+
+      const editorSections = document.createElement('div');
+      editorSections.className = 'character-editor-sections';
+
+      const avatarSizeControl = numberInput(character.avatarSize || 92, (value) => updateStoryCharacter(sourceIndex, 'avatarSize', value));
+      avatarSizeControl.dataset.characterField = 'avatarSize';
+      const avatarXControl = numberInput(character.avatarX || 14, (value) => updateStoryCharacter(sourceIndex, 'avatarX', value));
+      avatarXControl.dataset.characterField = 'avatarX';
+      const avatarYControl = numberInput(character.avatarY || 332, (value) => updateStoryCharacter(sourceIndex, 'avatarY', value));
+      avatarYControl.dataset.characterField = 'avatarY';
+      const avatarScaleControl = rangeInput(character.avatarScale ?? 1, 0.5, 3, 0.05, (value) => updateStoryCharacter(sourceIndex, 'avatarScale', value), (value) => `${Number(value).toFixed(2)}x`);
+      avatarScaleControl.dataset.characterField = 'avatarScale';
+      const avatarCenterXControl = rangeInput(character.avatarCenterX ?? 50, 0, 100, 1, (value) => updateStoryCharacter(sourceIndex, 'avatarCenterX', value), (value) => `${Math.round(value)}%`);
+      avatarCenterXControl.dataset.characterField = 'avatarCenterX';
+      const avatarCenterYControl = rangeInput(character.avatarCenterY ?? 50, 0, 100, 1, (value) => updateStoryCharacter(sourceIndex, 'avatarCenterY', value), (value) => `${Math.round(value)}%`);
+      avatarCenterYControl.dataset.characterField = 'avatarCenterY';
+      const nameplateXControl = numberInput(character.nameplateX || 110, (value) => updateStoryCharacter(sourceIndex, 'nameplateX', value));
+      nameplateXControl.dataset.characterField = 'nameplateX';
+      const nameplateRightPercentControl = numberInput(character.nameplateRightPercent || 30, (value) => updateStoryCharacter(sourceIndex, 'nameplateRightPercent', value));
+      nameplateRightPercentControl.dataset.characterField = 'nameplateRightPercent';
+      const nameplateYControl = numberInput(character.nameplateY || 346, (value) => updateStoryCharacter(sourceIndex, 'nameplateY', value));
+      nameplateYControl.dataset.characterField = 'nameplateY';
+      const nameplateColorControl = colorInput(character.nameplateColor || '#56616A', (value) => updateStoryCharacter(sourceIndex, 'nameplateColor', value), '#56616A');
+      nameplateColorControl.dataset.characterField = 'nameplateColor';
+      const nameplateTextColorControl = colorInput(character.nameplateTextColor || '#FFFFFF', (value) => updateStoryCharacter(sourceIndex, 'nameplateTextColor', value), '#FFFFFF');
+      nameplateTextColorControl.dataset.characterField = 'nameplateTextColor';
+
+      const basics = document.createElement('section');
+      basics.className = 'character-section';
+      basics.appendChild(sectionHeading('基本資料'));
+      const basicsGrid = document.createElement('div');
+      basicsGrid.className = 'character-field-grid';
+      basicsGrid.append(
+        createField('名稱', input(character.name, (value) => updateStoryCharacter(sourceIndex, 'name', value))),
+        createField('角色 ID', input(character.id, (value) => updateStoryCharacter(sourceIndex, 'id', value))),
+        createField('分類', select([['protagonist', '主角'], ['supporting', '配角'], ['narrator', '旁白']], character.category || 'supporting', (value) => updateStoryCharacter(sourceIndex, 'category', value))),
+        createField('排序', numberInput(character.sortOrder || 0, (value) => updateStoryCharacter(sourceIndex, 'sortOrder', value))),
+        createField('預設位置', select([['left', '左'], ['right', '右']], character.placement, (value) => updateStoryCharacter(sourceIndex, 'placement', value)))
+      );
+      basics.appendChild(basicsGrid);
+
+      const avatarSection = document.createElement('section');
+      avatarSection.className = 'character-section';
+      avatarSection.appendChild(sectionHeading('頭貼設定'));
+      const avatarGrid = document.createElement('div');
+      avatarGrid.className = 'character-field-grid';
+      avatarGrid.append(
+        createField('頭像圖片', imageInput(character.avatarPath, (value) => updateStoryCharacter(sourceIndex, 'avatarPath', value)), 'single'),
+        createField('頭像尺寸', avatarSizeControl),
+        createField('頭像 X', avatarXControl),
+        createField('頭像 Y', avatarYControl),
+        createField('頭貼縮放', avatarScaleControl),
+        createField('中心 X', avatarCenterXControl),
+        createField('中心 Y', avatarCenterYControl)
+      );
+      avatarSection.appendChild(avatarGrid);
+
+      const plateSection = document.createElement('section');
+      plateSection.className = 'character-section';
+      plateSection.appendChild(sectionHeading('姓名牌設定'));
+      const plateGrid = document.createElement('div');
+      plateGrid.className = 'character-field-grid';
+      plateGrid.append(
+        createField('姓名牌 X', nameplateXControl),
+        createField('姓名牌右側 %', nameplateRightPercentControl),
+        createField('姓名牌 Y', nameplateYControl),
+        createField('姓名牌大小', nameplateSizeSlider(character.nameplateSize || 'lg', (value) => updateStoryCharacter(sourceIndex, 'nameplateSize', value))),
+        createField('姓名牌顏色', nameplateColorControl),
+        createField('姓名牌字色', nameplateTextColorControl)
+      );
+      plateSection.appendChild(plateGrid);
+
+      editorSections.append(basics, avatarSection, plateSection);
+      editorGrid.append(previewShell, editorSections);
+      card.appendChild(editorGrid);
+
+      const usageLine = document.createElement('div');
+      usageLine.className = 'draft-diff';
+      usageLine.textContent = usage.length ? `出現位置：${usage.join(', ')}` : '尚未被任何節點使用。';
+      card.appendChild(usageLine);
+      const actions = document.createElement('div');
+      actions.className = 'character-actions';
+      const save = document.createElement('button');
+      save.className = 'button good';
+      save.textContent = '儲存角色';
+      save.addEventListener('click', handleSaveStory);
+      actions.appendChild(save);
+      const remove = document.createElement('button');
+      remove.className = 'button bad';
+      remove.textContent = '刪除角色';
+      remove.addEventListener('click', () => {
+        story.characters.splice(sourceIndex, 1);
+        renderStories();
+      });
+      actions.appendChild(remove);
+      card.appendChild(actions);
+      dom.storyCharacterList.appendChild(card);
+      bindCharacterPreviewDrag(preview, sourceIndex);
+      });
+  }
+
+  function syncStoryCharacterPreview(index) {
+    const story = currentStory();
+    if (!story) return;
+    const character = story.characters?.[index];
+    if (!character) return;
+    const preview = dom.storyCharacterList.querySelector(`[data-character-preview="${index}"]`);
+    if (!preview) return;
+    preview.innerHTML = renderCharacterPreviewMarkup(character);
+    bindCharacterPreviewDrag(preview, index);
+    const card = dom.storyCharacterList.querySelector(`[data-character-index="${index}"]`);
+    if (card) {
+      const title = card.querySelector('.story-title');
+      const idPill = card.querySelector('.pill');
+      const subtle = card.querySelector('.subtle');
+      if (title) title.textContent = character.name;
+      if (idPill) idPill.textContent = character.id;
+      if (subtle) subtle.textContent = `分類：${character.category || 'supporting'} / 使用節點：${subtle.dataset.usageCount || '0'}`;
+      syncCharacterFieldControl(card, 'avatarX', character.avatarX || 0);
+      syncCharacterFieldControl(card, 'avatarY', character.avatarY || 0);
+      syncCharacterFieldControl(card, 'avatarSize', character.avatarSize || 0);
+      syncCharacterFieldControl(card, 'avatarScale', character.avatarScale ?? 1, (value) => `${Number(value).toFixed(2)}x`);
+      syncCharacterFieldControl(card, 'avatarCenterX', character.avatarCenterX ?? 50, (value) => `${Math.round(value)}%`);
+      syncCharacterFieldControl(card, 'avatarCenterY', character.avatarCenterY ?? 50, (value) => `${Math.round(value)}%`);
+      syncCharacterFieldControl(card, 'nameplateX', character.nameplateX || 0);
+      syncCharacterFieldControl(card, 'nameplateRightPercent', character.nameplateRightPercent || 0);
+      syncCharacterFieldControl(card, 'nameplateY', character.nameplateY || 0);
+      syncCharacterFieldControl(card, 'nameplateSize', character.nameplateSize || 'lg');
+      syncCharacterFieldControl(card, 'nameplateColor', character.nameplateColor || '#56616A');
+      syncCharacterFieldControl(card, 'nameplateTextColor', character.nameplateTextColor || '#FFFFFF');
+    }
+  }
+
+  function syncCharacterFieldControl(card, field, value, formatValue) {
+    const control = card.querySelector(`[data-character-field="${field}"]`);
+    if (!control) return;
+    if (control.matches('input, select, textarea')) {
+      control.value = String(value);
+      return;
+    }
+    const color = control.querySelector('input[type="color"]');
+    const text = control.querySelector('input[type="text"]');
+    if (color && text) {
+      color.value = String(value);
+      text.value = String(value);
+      return;
+    }
+    const range = control.querySelector('input[type="range"]');
+    if (range) {
+      if (range.dataset.optionValues) {
+        const values = range.dataset.optionValues.split(',');
+        range.value = String(Math.max(0, values.indexOf(String(value))));
+      } else {
+        range.value = String(value);
+      }
+      const output = control.querySelector('.slider-value');
+      if (output) {
+        if (range.dataset.optionValues) {
+          const values = range.dataset.optionValues.split(',');
+          output.textContent = values[Number(range.value)] || String(value);
+        } else {
+          output.textContent = formatValue ? formatValue(Number(value)) : String(value);
+        }
+      }
+    }
+  }
+
+  function previewLayoutScale() {
+    return 1;
+  }
+
+  function characterPreviewImagePath() {
+    const story = currentStory();
+    if (!story) return '/public/story/01/image01.png';
+    for (const node of story.nodes || []) {
+      if (node.type === 'carousel' && Array.isArray(node.pages) && node.pages[0]?.imagePath) {
+        return node.pages[0].imagePath;
+      }
+      if (node.imagePath) return node.imagePath;
+      if (Array.isArray(node.pages) && node.pages[0]?.imagePath) return node.pages[0].imagePath;
+    }
+    return '/public/story/01/image01.png';
+  }
+
+  function renderCharacterPreviewMarkup(character) {
+    const scale = previewLayoutScale();
+    const avatarSize = Math.max(36, Math.round((character.avatarSize || 92) * scale));
+    const avatarY = Math.round((character.avatarY || 332) * scale);
+    const avatarX = Math.round((character.avatarX || 14) * scale);
+    const nameplateY = Math.round((character.nameplateY || 346) * scale);
+    const nameplateLeft = Math.round((character.nameplateX || 110) * scale);
+    const nameplateRight = character.nameplateAnchor === 'right-percent'
+      ? `${character.nameplateRightPercent || 30}%`
+      : `${Math.round((character.nameplateX || 0) * scale)}px`;
+    const nameplatePreset =
+      state.globalSettings?.nameplateSizePresets?.[character.nameplateSize || 'lg']
+      || state.globalSettings?.nameplateSizePresets?.lg
+      || { paddingX: 22, paddingY: 12, cornerRadius: 14, label: 'lg' };
+    const nameplateFontSize = nameplatePreset.label === 'xl' ? '19px' : nameplatePreset.label === 'md' ? '15px' : '17px';
+    const heroImage = characterPreviewImagePath();
+    const previewText = character.category === 'narrator'
+      ? '這是旁白模擬。'
+      : `「${character.name} 的對話會出現在這裡。」`;
+
+    return `
+      <div class="character-preview-stage">
+        <img class="hero" src="${escapeHtml(heroImage)}" alt="" style="height:400px;width:100%;object-fit:cover;">
+      </div>
+      <div class="character-preview-body">
+        <div class="character-preview-text">${escapeHtml(previewText)}</div>
+      </div>
+      <div class="character-preview-avatar" data-drag-avatar style="width:${avatarSize}px;height:${avatarSize}px;top:${avatarY}px;${character.placement === 'left' ? `left:${avatarX}px;` : `right:${avatarX}px;`}">
+        <img src="${escapeHtml(character.avatarPath || '')}" alt="" style="object-position:${character.avatarCenterX ?? 50}% ${character.avatarCenterY ?? 50}%;transform:scale(${character.avatarScale ?? 1});">
+      </div>
+      <div class="plate" data-drag-plate style="top:${nameplateY}px;${character.placement === 'left' ? `left:${nameplateLeft}px;` : `right:${nameplateRight};`} background:${character.nameplateColor}; color:${character.nameplateTextColor};padding:${nameplatePreset.paddingY}px ${nameplatePreset.paddingX}px;border-radius:${nameplatePreset.cornerRadius}px;font-size:${nameplateFontSize};">
+        ${escapeHtml(character.name)}
+      </div>
+    `;
+  }
+
+  function bindCharacterPreviewDrag(preview, index) {
+    const avatar = preview.querySelector('[data-drag-avatar]');
+    const plate = preview.querySelector('[data-drag-plate]');
+    if (avatar) avatar.onpointerdown = (event) => {
+      event.preventDefault();
+      const story = currentStory();
+      if (!story?.characters?.[index]) return;
+      const character = story.characters[index];
+      const scale = previewLayoutScale();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const initialAvatarX = Number(character.avatarX || 0);
+      const initialAvatarY = Number(character.avatarY || 0);
+
+      const move = (moveEvent) => {
+        const dx = (moveEvent.clientX - startX) / scale;
+        const dy = (moveEvent.clientY - startY) / scale;
+        if (character.placement === 'left') {
+          character.avatarX = Math.max(0, Math.round(initialAvatarX + dx));
+        } else {
+          character.avatarX = Math.max(0, Math.round(initialAvatarX - dx));
+        }
+        character.avatarY = Math.max(0, Math.round(initialAvatarY + dy));
+        syncStoryCharacterPreview(index);
+        schedulePreview();
+      };
+
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+      };
+
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    };
+
+    if (plate) plate.onpointerdown = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const story = currentStory();
+      if (!story?.characters?.[index]) return;
+      const character = story.characters[index];
+      const scale = previewLayoutScale();
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const initialNameplateX = Number(character.nameplateX || 0);
+      const initialNameplateY = Number(character.nameplateY || 0);
+
+      const move = (moveEvent) => {
+        const dx = (moveEvent.clientX - startX) / scale;
+        const dy = (moveEvent.clientY - startY) / scale;
+        character.nameplateAnchor = character.placement === 'left' ? 'left-fixed' : 'right-fixed';
+        if (character.placement === 'left') {
+          character.nameplateX = Math.max(0, Math.round(initialNameplateX + dx));
+        } else {
+          character.nameplateX = Math.max(0, Math.round(initialNameplateX - dx));
+        }
+        character.nameplateY = Math.max(0, Math.round(initialNameplateY + dy));
+        syncStoryCharacterPreview(index);
+        schedulePreview();
+      };
+
+      const up = () => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+      };
+
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    };
+  }
+
+  function renderDraftImport(story) {
+    const draft = story.draftImport || { nodes: [], unboundRoles: [] };
+    if (!draft.nodes.length) {
+      dom.draftNodeList.innerHTML = '<div class="status-box">尚未產生 AI 草稿。</div>';
+      return;
+    }
+    dom.draftNodeList.innerHTML = draft.nodes.map((node) => `
+      <article class="story-card ${node.id === state.currentDraftNodeId ? 'active' : ''}" data-draft-node-id="${node.id}">
+        <div class="row space-between">
+          <div>
+            <div class="story-title">${escapeHtml(node.title)}</div>
+          <div class="subtle">${escapeHtml(describeNodeType(node.type))} / ${escapeHtml(node.id)} / ${escapeHtml(node.status || 'pending')}</div>
+          </div>
+          <span class="pill ${node.unboundCharacterName ? 'warn' : 'good'}">${node.unboundCharacterName ? `未綁定：${escapeHtml(node.unboundCharacterName)}` : '角色已綁定'}</span>
+        </div>
+        <div class="subtle">差異：${escapeHtml((node.diff?.changedFields || []).join(', ') || (node.diff?.isNew ? '新節點' : '無'))}</div>
+        <div class="subtle">警示：${escapeHtml(describeDraftWarnings(node))}</div>
+        <div class="actions" style="margin-top:10px;">
+          <button class="button ghost" data-draft-action="reparse">重新解析</button>
+          <button class="button secondary" data-draft-action="apply">套用此節點</button>
+        </div>
+      </article>
+    `).join('');
+    dom.draftNodeList.querySelectorAll('[data-draft-node-id]').forEach((card) => {
+      const nodeId = card.dataset.draftNodeId;
+      card.querySelector('[data-draft-action="reparse"]').addEventListener('click', async () => {
+        const result = await api(`/stories/${story.id}/draft/reparse-node`, {
+          method: 'POST',
+          body: JSON.stringify({ nodeId })
+        });
+        state.storyDetail.story.draftImport = result.draftImport;
+        state.currentDraftNodeId = nodeId;
+        renderStories();
+      });
+      card.querySelector('[data-draft-action="apply"]').addEventListener('click', async () => {
+        const result = await api(`/stories/${story.id}/draft/apply`, {
+          method: 'POST',
+          body: JSON.stringify({ nodeId })
+        });
+        state.storyDetail.story = result.story;
+        renderStories();
+      });
+      card.addEventListener('click', (event) => {
+        if (event.target.closest('button')) return;
+        state.currentDraftNodeId = nodeId;
+        renderDraftEditor(story);
+      });
     });
   }
 
-  document.getElementById('create-story').onclick = createStory;
-  document.getElementById('save-story').onclick = saveStory;
-  document.getElementById('add-character').onclick = addCharacter;
-  document.getElementById('open-script-drawer').onclick = openDrawer;
-  document.getElementById('close-script-drawer').onclick = closeDrawer;
-  document.getElementById('close-script-drawer-button').onclick = closeDrawer;
-  document.getElementById('analyze-script').onclick = analyzeScript;
-  document.getElementById('apply-all-suggestions').onclick = applyAllSuggestions;
-  document.getElementById('clear-suggestions').onclick = clearSuggestions;
+  function renderDraftEditor(story) {
+    const draftNode = currentDraftNode();
+    if (!draftNode) {
+      dom.draftEditorEmpty.classList.remove('hidden');
+      dom.draftEditorShell.classList.add('hidden');
+      return;
+    }
+    dom.draftEditorEmpty.classList.add('hidden');
+    dom.draftEditorShell.classList.remove('hidden');
+    dom.draftEditorForm.innerHTML = '';
 
-  document.querySelectorAll('[data-top-tab]').forEach((button) => {
-    button.onclick = () => {
-      state.activeTopTab = button.dataset.topTab;
-      renderTopTab();
-      renderPreviewTab();
+    const wrap = document.createElement('div');
+    wrap.className = 'draft-editor';
+    const diff = document.createElement('div');
+    diff.className = 'draft-diff';
+    diff.textContent = draftNode.diff?.isNew
+      ? '差異：這是新節點，尚未進入正式故事。'
+      : `差異欄位：${(draftNode.diff?.changedFields || []).join(', ') || '無'}`;
+    wrap.appendChild(diff);
+
+    const grid = document.createElement('div');
+    grid.className = 'field-grid';
+    grid.append(
+      createField('節點標題', input(draftNode.title, (value) => updateDraftNodeField('title', value))),
+      createField('卡片類型', select([
+        ['dialogue', '對話卡'],
+        ['narration', '旁白卡'],
+        ['choice', '選項卡'],
+        ['carousel', '多頁訊息']
+      ], draftNode.type, (value) => updateDraftNodeField('type', value))),
+      createField('主講角色', select(characterOptions(true), draftNode.speakerCharacterId || '', (value) => updateDraftNodeField('speakerCharacterId', value))),
+      createField('陪襯角色', select(characterOptions(true), draftNode.companionCharacterId || '', (value) => updateDraftNodeField('companionCharacterId', value))),
+      createField('下一節點', select(nextNodeOptions(story), draftNode.nextNodeId || '', (value) => updateDraftNodeField('nextNodeId', value))),
+      createField('圖片', imageInput(draftNode.imagePath, (value) => updateDraftNodeField('imagePath', value)))
+    );
+    grid.appendChild(createField('文字', textarea(draftNode.text || '', (value) => updateDraftNodeField('text', value)), 'single'));
+    if (draftNode.type === 'choice') {
+      grid.appendChild(createField('提問', textarea(draftNode.prompt || '', (value) => updateDraftNodeField('prompt', value)), 'single'));
+    }
+    wrap.appendChild(grid);
+
+    if (draftNode.type === 'carousel' || draftNode.type === 'choice') {
+      const pagesWrap = document.createElement('div');
+      pagesWrap.className = 'stack';
+      const title = document.createElement('h3');
+      title.textContent = '草稿頁面校正';
+      pagesWrap.appendChild(title);
+      (draftNode.pages || []).forEach((page, pageIndex) => {
+        const section = document.createElement('section');
+        section.className = 'panel';
+        section.style.padding = '14px';
+        const pageGrid = document.createElement('div');
+        pageGrid.className = 'field-grid';
+        pageGrid.append(
+          createField('頁面標題', input(page.title || '', (value) => updateDraftPageField(pageIndex, 'title', value))),
+          createField('頁面卡型', select([
+            ['dialogue', '對話卡'],
+            ['narration', '旁白卡']
+          ], page.cardType || 'dialogue', (value) => updateDraftPageField(pageIndex, 'cardType', value))),
+          createField('頁面圖片', imageInput(page.imagePath, (value) => updateDraftPageField(pageIndex, 'imagePath', value))),
+          createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updateDraftPageField(pageIndex, 'speakerCharacterId', value))),
+          createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updateDraftPageField(pageIndex, 'companionCharacterId', value))),
+          createField('字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updateDraftPageField(pageIndex, 'lineTextSize', value)))
+        );
+        pageGrid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updateDraftPageField(pageIndex, 'text', value)), 'single'));
+        section.appendChild(pageGrid);
+        pagesWrap.appendChild(section);
+      });
+      wrap.appendChild(pagesWrap);
+    }
+
+    if (draftNode.type === 'choice') {
+      const choiceWrap = document.createElement('div');
+      choiceWrap.className = 'panel';
+      choiceWrap.style.padding = '14px';
+      const choiceGrid = document.createElement('div');
+      choiceGrid.className = 'field-grid';
+      choiceGrid.append(
+        createField('選項 A', input(draftNode.optionA?.label || '', (value) => updateDraftChoiceField('optionA', 'label', value))),
+        createField('選項 A 下一節點', select(nextNodeOptions(story), draftNode.optionA?.nextNodeId || '', (value) => updateDraftChoiceField('optionA', 'nextNodeId', value))),
+        createField('選項 A 回饋', textarea(draftNode.optionA?.feedback || '', (value) => updateDraftChoiceField('optionA', 'feedback', value))),
+        createField('選項 B', input(draftNode.optionB?.label || '', (value) => updateDraftChoiceField('optionB', 'label', value))),
+        createField('選項 B 下一節點', select(nextNodeOptions(story), draftNode.optionB?.nextNodeId || '', (value) => updateDraftChoiceField('optionB', 'nextNodeId', value))),
+        createField('選項 B 回饋', textarea(draftNode.optionB?.feedback || '', (value) => updateDraftChoiceField('optionB', 'feedback', value)))
+      );
+      choiceWrap.appendChild(choiceGrid);
+      wrap.appendChild(choiceWrap);
+    }
+
+    if (draftNode.unboundCharacterName) {
+      const bindWrap = document.createElement('div');
+      bindWrap.className = 'panel';
+      bindWrap.style.padding = '14px';
+      const bindGrid = document.createElement('div');
+      bindGrid.className = 'field-grid';
+      const bindSelect = select(characterOptions(true), '', () => {});
+      const bindField = createField(`未綁定角色：${draftNode.unboundCharacterName}`, bindSelect);
+      bindGrid.appendChild(bindField);
+      bindWrap.appendChild(bindGrid);
+      const bindButton = document.createElement('button');
+      bindButton.className = 'button warn';
+      bindButton.textContent = '綁定到這個角色';
+      bindButton.addEventListener('click', () => {
+        if (!bindSelect.value) return;
+        updateDraftNodeField('speakerCharacterId', bindSelect.value);
+        updateDraftNodeField('unboundCharacterName', '');
+      });
+      bindWrap.appendChild(bindButton);
+      wrap.appendChild(bindWrap);
+    }
+
+    const quick = document.createElement('div');
+    quick.className = 'actions';
+    [
+      ['快速改為對話卡', () => updateDraftNodeField('type', 'dialogue')],
+      ['快速改為旁白卡', () => updateDraftNodeField('type', 'narration')],
+      ['快速改為多頁訊息', () => updateDraftNodeField('type', 'carousel')],
+      ['套用此節點到正式故事', async () => {
+        const result = await api(`/stories/${story.id}/draft/apply`, {
+          method: 'POST',
+          body: JSON.stringify({ nodeId: draftNode.id })
+        });
+        state.storyDetail.story = result.story;
+        renderStories();
+      }]
+    ].forEach(([label, handler], index) => {
+      const button = document.createElement('button');
+      button.className = `button ${index === 3 ? 'good' : 'secondary'}`;
+      button.textContent = label;
+      button.addEventListener('click', handler);
+      quick.appendChild(button);
+    });
+    wrap.appendChild(quick);
+    dom.draftEditorForm.appendChild(wrap);
+  }
+
+  function getPrimaryNextNodeId(node) {
+    if (node.nextNodeId) return node.nextNodeId;
+    if (node.type === 'choice') {
+      return node.optionB?.nextNodeId || node.optionA?.nextNodeId || '';
+    }
+    return '';
+  }
+
+  function renderNodeGraph(story) {
+    const nodes = story?.nodes || [];
+    if (!nodes.length) {
+      return '<div class="status-box">尚未建立節點。</div>';
+    }
+
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const placed = new Map();
+    nodes.forEach((node, index) => {
+      const column = index;
+      placed.set(node.id, {
+        x: 40 + column * 300,
+        y: 86
+      });
+    });
+
+    const deadEnds = [];
+    const edges = [];
+    nodes.forEach((node) => {
+      const fromPos = placed.get(node.id);
+      if (!fromPos) return;
+
+      if (node.nextNodeId && placed.has(node.nextNodeId)) {
+        edges.push({ from: node.id, to: node.nextNodeId, style: 'solid', label: '主線' });
+      }
+
+      if (node.type === 'choice') {
+        const primary = getPrimaryNextNodeId(node);
+        [
+          { key: 'A', target: node.optionA?.nextNodeId || '', label: node.optionA?.label || 'A' },
+          { key: 'B', target: node.optionB?.nextNodeId || '', label: node.optionB?.label || 'B' }
+        ].forEach((option, optionIndex) => {
+          if (!option.target) {
+            const deadId = `${node.id}-${option.key}-dead`;
+        const deadPos = {
+          x: fromPos.x + 190,
+          y: 278 + optionIndex * 110
+        };
+            deadEnds.push({
+              id: deadId,
+              title: `Dead End ${option.key}`,
+              type: 'dead-end',
+              x: deadPos.x,
+              y: deadPos.y
+            });
+            edges.push({ from: node.id, to: deadId, style: 'dashed', label: `${option.key} dead` });
+            return;
+          }
+          const style = option.target === primary ? 'solid' : 'dashed';
+          if (placed.has(option.target)) {
+            edges.push({ from: node.id, to: option.target, style, label: option.key });
+          }
+        });
+      }
+    });
+
+    const cardWidth = 220;
+    const cardHeight = 132;
+    const maxRight = Math.max(
+      ...Array.from(placed.values()).map((pos) => pos.x + cardWidth),
+      ...deadEnds.map((pos) => pos.x + 180),
+      1200
+    );
+    const maxBottom = Math.max(
+      ...Array.from(placed.values()).map((pos) => pos.y + cardHeight),
+      ...deadEnds.map((pos) => pos.y + 80),
+      420
+    );
+
+    const allPositions = new Map();
+    nodes.forEach((node) => {
+      const pos = placed.get(node.id);
+      if (pos) allPositions.set(node.id, { x: pos.x, y: pos.y, width: cardWidth, height: cardHeight });
+    });
+    deadEnds.forEach((entry) => {
+      allPositions.set(entry.id, { x: entry.x, y: entry.y, width: 140, height: 72 });
+    });
+
+    return `
+      <div class="graph-canvas" style="width:${maxRight + 80}px;height:${maxBottom + 40}px;">
+        <svg class="graph-svg" viewBox="0 0 ${maxRight + 80} ${maxBottom + 40}" preserveAspectRatio="none">
+          <defs>
+            <marker id="graph-arrow-head" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#C58B67"></path>
+            </marker>
+            <marker id="graph-arrow-head-dashed" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+              <path d="M0,0 L10,5 L0,10 z" fill="#BCA890"></path>
+            </marker>
+          </defs>
+          ${edges.map((edge) => {
+            const from = allPositions.get(edge.from);
+            const to = allPositions.get(edge.to);
+            if (!from || !to) return '';
+            const x1 = from.x + from.width;
+            const y1 = from.y + from.height / 2;
+            const x2 = to.x;
+            const y2 = to.y + to.height / 2;
+            const cx1 = x1 + 54;
+            const cx2 = x2 - 54;
+            const stroke = edge.style === 'dashed' ? '#BCA890' : '#C58B67';
+            const marker = edge.style === 'dashed' ? 'graph-arrow-head-dashed' : 'graph-arrow-head';
+            const dash = edge.style === 'dashed' ? '10 10' : '0';
+            return `
+              <path d="M ${x1} ${y1} C ${cx1} ${y1}, ${cx2} ${y2}, ${x2} ${y2}"
+                fill="none"
+                stroke="${stroke}"
+                stroke-width="4"
+                stroke-dasharray="${dash}"
+                marker-end="url(#${marker})"></path>
+              <text class="graph-link-label" x="${(x1 + x2) / 2}" y="${Math.min(y1, y2) - 10}" text-anchor="middle">${escapeHtml(edge.label)}</text>
+            `;
+          }).join('')}
+        </svg>
+        <div class="graph-node-layer">
+          ${nodes.map((node, index) => {
+            const pos = placed.get(node.id);
+            return renderNodeCard(node, pos, index);
+          }).join('')}
+          ${deadEnds.map((node) => `
+            <article class="graph-node graph-placed" style="left:${node.x}px;top:${node.y}px;width:140px;min-width:140px;background:#fff7f1;border-style:dashed;border-color:#d8bda3;">
+              <div class="node-title">${escapeHtml(node.title)}</div>
+              <div class="subtle">沒有連到下一節點</div>
+            </article>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderNodeCard(node, position = { x: 0, y: 0 }, index = 0) {
+    const links = [];
+    if (node.nextNodeId) links.push(`→ ${node.nextNodeId}`);
+    if (node.optionA?.nextNodeId) links.push(`A → ${node.optionA.nextNodeId}`);
+    if (node.optionB?.nextNodeId) links.push(`B → ${node.optionB.nextNodeId}`);
+    return `
+      <article class="graph-node graph-placed node-card ${node.id === state.currentNodeId ? 'active selected' : ''}" data-node-id="${node.id}" style="left:${position.x}px;top:${position.y}px;">
+        <div class="row space-between">
+          <div class="node-title">ACT ${index + 1}</div>
+          <span class="pill">${escapeHtml(node.type)}</span>
+        </div>
+        <div class="subtle">num.${index + 1}</div>
+        <div class="graph-links">${links.length ? links.map((link) => `<span class="pill">${escapeHtml(link)}</span>`).join('') : '<span class="subtle">尚未連線</span>'}</div>
+        <div class="graph-node-actions">
+          <button class="graph-node-action" data-node-action="move-prev" data-node-id="${node.id}">前移</button>
+          <button class="graph-node-action" data-node-action="move-next" data-node-id="${node.id}">後移</button>
+          <button class="graph-node-action delete" data-node-action="delete" data-node-id="${node.id}">刪除</button>
+        </div>
+      </article>
+    `;
+  }
+
+  function renderNodeEditor() {
+    const node = currentNode();
+    const story = currentStory();
+    if (!node || !story) {
+      dom.nodeEditorEmpty.classList.remove('hidden');
+      dom.nodeEditorShell.classList.add('hidden');
+      return;
+    }
+    dom.nodeEditorEmpty.classList.add('hidden');
+    dom.nodeEditorShell.classList.remove('hidden');
+    dom.nodeEditorForm.innerHTML = '';
+
+    const context = currentPreviewContext();
+    const wrapper = document.createElement('div');
+    wrapper.className = 'stack';
+
+    const header = document.createElement('div');
+    header.className = 'editor-selection';
+    header.innerHTML = `
+      <div>
+        <div class="editor-selection-title">${escapeHtml(context.targetType === 'page' ? (context.page?.title || '目前頁面') : node.title)}</div>
+        <div class="editor-selection-meta">
+          ${escapeHtml(context.targetType === 'page'
+            ? `正在編輯第 ${context.pageIndex + 1} 張卡`
+            : context.targetType === 'choice'
+              ? '正在編輯選項卡'
+              : '正在編輯節點主卡')}
+        </div>
+      </div>
+    `;
+    const saveButton = document.createElement('button');
+    saveButton.className = 'button';
+    saveButton.textContent = context.targetType === 'page' ? '儲存這一張卡' : '儲存目前卡片';
+    saveButton.addEventListener('click', handleSaveStory);
+    header.appendChild(saveButton);
+    wrapper.appendChild(header);
+
+    if (context.targetType === 'page' && context.page) {
+      wrapper.appendChild(renderSelectedPageEditor(node, context.page, context.pageIndex));
+    } else {
+      wrapper.appendChild(renderFieldGrid(node, story));
+      if (context.targetType === 'choice') {
+        wrapper.appendChild(renderChoiceEditor(node, story));
+      }
+    }
+    dom.nodeEditorForm.appendChild(wrapper);
+  }
+
+  function renderFieldGrid(node, story) {
+    const container = document.createElement('div');
+    container.className = 'field-grid';
+    container.append(
+      createField('節點標題', input(node.title, (value) => updateNodeField('title', value))),
+      createField('卡片類型', select([
+        ['dialogue', '對話卡'],
+        ['narration', '旁白卡'],
+        ['choice', '選項卡'],
+        ['carousel', '多頁訊息']
+      ], node.type, (value) => updateNodeType(node, value))),
+      createField('圖片', imageInput(node.imagePath, (value) => updateNodeField('imagePath', value))),
+      createField('大圖透明度', decimalInput(node.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updateNodeField('heroImageOpacity', value))),
+      createField('大圖縮放', rangeInput(node.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updateNodeField('heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
+      createField('下一節點', select(nextNodeOptions(story), node.nextNodeId || '', (value) => updateNodeField('nextNodeId', value))),
+      createField('LINE 字級', select(textSizeOptions(), node.lineTextSize || 'lg', (value) => updateNodeField('lineTextSize', value))),
+      createField('文字顏色', colorInput(node.lineTextColor || '#2D241B', (value) => updateNodeField('lineTextColor', value))),
+      createField('姓名牌大小', nameplateSizeSlider(node.nameplateSize || 'lg', (value) => updateNodeField('nameplateSize', value))),
+      createField('主講角色', select(characterOptions(true), node.speakerCharacterId || '', (value) => updateNodeField('speakerCharacterId', value))),
+      createField('陪襯角色', select(characterOptions(true), node.companionCharacterId || '', (value) => updateNodeField('companionCharacterId', value))),
+      createField('繼續按鈕文字', input(node.continueLabel || '下一步', (value) => updateNodeField('continueLabel', value))),
+      createField('圖上位置 X', numberInput(node.position?.x || 0, (value) => updateNodePosition('x', value))),
+      createField('圖上位置 Y', numberInput(node.position?.y || 0, (value) => updateNodePosition('y', value)))
+    );
+    container.appendChild(createField('文字', textarea(node.text || '', (value) => updateNodeField('text', value)), 'single'));
+    return container;
+  }
+
+  function renderSelectedPageEditor(node, page, pageIndex) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+
+    const section = document.createElement('section');
+    section.className = 'panel';
+    section.style.padding = '14px';
+    const heading = document.createElement('div');
+    heading.className = 'row space-between';
+    heading.innerHTML = `<h3>${escapeHtml(page.title || `第 ${pageIndex + 1} 頁`)}</h3>`;
+    const saveButton = document.createElement('button');
+    saveButton.className = 'button good';
+    saveButton.textContent = '儲存這一頁';
+    saveButton.addEventListener('click', handleSaveStory);
+    heading.appendChild(saveButton);
+    section.appendChild(heading);
+
+    const grid = document.createElement('div');
+    grid.className = 'field-grid';
+    grid.append(
+      createField('頁面標題', input(page.title || '', (value) => updatePageField(node, pageIndex, 'title', value))),
+      createField('頁面卡型', select([
+        ['dialogue', '對話卡'],
+        ['narration', '旁白卡']
+      ], page.cardType || 'dialogue', (value) => updatePageField(node, pageIndex, 'cardType', value))),
+      createField('頁面圖片', imageInput(page.imagePath, (value) => updatePageField(node, pageIndex, 'imagePath', value))),
+      createField('大圖透明度', decimalInput(page.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageOpacity', value))),
+      createField('大圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
+      createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updatePageField(node, pageIndex, 'speakerCharacterId', value))),
+      createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updatePageField(node, pageIndex, 'companionCharacterId', value))),
+      createField('LINE 字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updatePageField(node, pageIndex, 'lineTextSize', value))),
+      createField('文字顏色', colorInput(page.lineTextColor || '#2D241B', (value) => updatePageField(node, pageIndex, 'lineTextColor', value))),
+      createField('姓名牌大小', nameplateSizeSlider(page.nameplateSize || 'lg', (value) => updatePageField(node, pageIndex, 'nameplateSize', value)))
+    );
+    grid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updatePageField(node, pageIndex, 'text', value)), 'single'));
+    section.appendChild(grid);
+    wrap.appendChild(section);
+
+    return wrap;
+  }
+
+  function renderChoiceEditor(node, story) {
+    const container = document.createElement('div');
+    container.className = 'stack';
+
+    const promptPanel = document.createElement('section');
+    promptPanel.className = 'panel';
+    promptPanel.style.padding = '14px';
+    const promptHeader = document.createElement('div');
+    promptHeader.className = 'row space-between';
+    promptHeader.appendChild(sectionHeading('選項提問'));
+    const saveButton = document.createElement('button');
+    saveButton.className = 'button good';
+    saveButton.textContent = '儲存這張選項卡';
+    saveButton.addEventListener('click', handleSaveStory);
+    promptHeader.appendChild(saveButton);
+    promptPanel.appendChild(promptHeader);
+    const promptGrid = document.createElement('div');
+    promptGrid.className = 'field-grid single';
+    promptGrid.appendChild(createField('問題內容', textarea(node.prompt || '', (value) => updateNodeField('prompt', value)), 'single'));
+    promptPanel.appendChild(promptGrid);
+    container.appendChild(promptPanel);
+
+    const optionsGrid = document.createElement('div');
+    optionsGrid.className = 'field-grid';
+
+    const optionAPanel = document.createElement('section');
+    optionAPanel.className = 'panel';
+    optionAPanel.style.padding = '14px';
+    optionAPanel.appendChild(sectionHeading('選項 A'));
+    const optionAGrid = document.createElement('div');
+    optionAGrid.className = 'field-grid single';
+    optionAGrid.append(
+      createField('文案', input(node.optionA?.label || '', (value) => updateChoiceField('optionA', 'label', value))),
+      createField('下一節點', select(nextNodeOptions(story), node.optionA?.nextNodeId || '', (value) => updateChoiceField('optionA', 'nextNodeId', value))),
+      createField('回饋', textarea(node.optionA?.feedback || '', (value) => updateChoiceField('optionA', 'feedback', value)))
+    );
+    optionAPanel.appendChild(optionAGrid);
+
+    const optionBPanel = document.createElement('section');
+    optionBPanel.className = 'panel';
+    optionBPanel.style.padding = '14px';
+    optionBPanel.appendChild(sectionHeading('選項 B'));
+    const optionBGrid = document.createElement('div');
+    optionBGrid.className = 'field-grid single';
+    optionBGrid.append(
+      createField('文案', input(node.optionB?.label || '', (value) => updateChoiceField('optionB', 'label', value))),
+      createField('下一節點', select(nextNodeOptions(story), node.optionB?.nextNodeId || '', (value) => updateChoiceField('optionB', 'nextNodeId', value))),
+      createField('回饋', textarea(node.optionB?.feedback || '', (value) => updateChoiceField('optionB', 'feedback', value)))
+    );
+    optionBPanel.appendChild(optionBGrid);
+
+    optionsGrid.append(optionAPanel, optionBPanel);
+    container.appendChild(optionsGrid);
+    return container;
+  }
+
+  function renderPreviewOnly() {
+    dom.previewTabs.forEach((button) => button.classList.toggle('active', button.dataset.previewPanel === state.previewPanel));
+    Object.entries(dom.previewPanels).forEach(([key, panel]) => panel.classList.toggle('active', key === state.previewPanel));
+    dom.previewStatus.textContent = [state.previewStatus, ...state.previewIssues.map((issue) => `• ${issue.message}`)].join('\n');
+    dom.scenePreview.innerHTML = '';
+    dom.payloadPreview.textContent = state.preview ? JSON.stringify(state.preview.payload, null, 2) : '{}';
+    const total = state.preview?.models?.length || 0;
+    dom.previewCounter.textContent = total ? `共 ${total} 張` : '0 張';
+    if (!state.preview || !total) return;
+    state.preview.models.forEach((model, index) => {
+      dom.scenePreview.appendChild(renderPreviewModel(model, index));
+    });
+  }
+
+  function renderPreviewModel(model, index) {
+    if (model.kind === 'choice') return renderChoicePreview(model, index);
+    const wrapper = document.createElement('div');
+    wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
+    wrapper.dataset.previewIndex = String(index);
+    const meta = document.createElement('div');
+    meta.className = 'preview-meta';
+    meta.innerHTML = `
+      <div class="preview-meta-main">
+        <strong>${escapeHtml(model.title || '未命名卡片')}</strong>
+        <div class="subtle">${escapeHtml(model.kind === 'dialogue' ? '對話卡' : model.kind === 'narration' ? '旁白卡' : '選項卡')}</div>
+      </div>
+      <span class="pill">${escapeHtml(model.kind === 'dialogue' ? '對話' : model.kind === 'narration' ? '旁白' : '選項')}</span>
+    `;
+    const article = document.createElement('article');
+    article.className = 'rpg-scene';
+    article.style.height = `${model.layout.totalHeight}px`;
+    const stage = document.createElement('div');
+    stage.className = 'rpg-stage';
+    stage.style.height = `${model.layout.heroHeight}px`;
+    const hero = document.createElement('img');
+    hero.className = 'hero';
+    hero.src = model.imageUrl;
+    hero.style.height = `${model.layout.heroHeight}px`;
+    hero.style.opacity = `${model.heroImageOpacity ?? 1}`;
+    hero.style.transform = `scale(${model.heroImageScale ?? 1})`;
+    hero.style.transformOrigin = 'center center';
+    stage.appendChild(hero);
+
+    if (model.kind === 'dialogue') {
+      [model.speaker, model.companion].filter(Boolean).forEach((role, index) => {
+        const avatar = document.createElement('div');
+        avatar.className = 'rpg-avatar';
+        avatar.style.width = `${role.avatarSize}px`;
+        avatar.style.height = `${role.avatarSize}px`;
+        avatar.style.top = `${role.avatarY}px`;
+        if (role.placement === 'left') avatar.style.left = `${role.avatarX}px`;
+        else avatar.style.right = `${role.avatarX}px`;
+        avatar.innerHTML = `<img src="${escapeHtml(role.avatarPath)}" alt="${escapeHtml(role.name)}" style="object-position:${role.avatarCenterX ?? 50}% ${role.avatarCenterY ?? 50}%;transform:scale(${role.avatarScale ?? 1});">`;
+        if (index === 0) {
+          const preset = state.globalSettings.nameplateSizePresets[model.nameplateSize] || state.globalSettings.nameplateSizePresets.lg;
+          const plate = document.createElement('div');
+          plate.className = 'rpg-nameplate';
+          plate.textContent = role.name;
+          plate.style.top = `${role.nameplateY}px`;
+          plate.style.background = role.nameplateColor;
+          plate.style.color = role.nameplateTextColor;
+          plate.style.padding = `${preset.paddingY}px ${preset.paddingX}px`;
+          plate.style.borderRadius = `${preset.cornerRadius}px`;
+          plate.style.fontSize = preset.label === 'xl' ? '19px' : preset.label === 'md' ? '15px' : '17px';
+          if (role.nameplateAnchor === 'right-percent') plate.style.right = `${role.nameplateRightPercent}%`;
+          else if (role.nameplateAnchor === 'right-fixed') plate.style.right = `${role.nameplateX}px`;
+          else plate.style.left = `${role.nameplateX}px`;
+          stage.appendChild(plate);
+        }
+        stage.appendChild(avatar);
+      });
+    }
+
+    const body = document.createElement('div');
+    body.className = 'rpg-body';
+    body.style.height = `${model.layout.bodyHeight}px`;
+    body.style.paddingTop = `${model.layout.bodyPaddingTop}px`;
+    body.style.paddingBottom = `${model.layout.bodyPaddingBottom}px`;
+    body.style.paddingLeft = `${model.kind === 'dialogue' && model.speaker?.placement === 'left' ? model.layout.leftSafePadding : model.layout.bodyPaddingSide}px`;
+    body.style.paddingRight = `${model.kind === 'dialogue' && model.speaker?.placement === 'right' ? model.layout.rightSafePadding : model.layout.bodyPaddingSide}px`;
+    const text = document.createElement('div');
+    text.className = 'rpg-text';
+    text.style.fontSize = model.lineTextSize === 'xl' ? '24px' : model.lineTextSize === 'md' ? '18px' : '20px';
+    text.style.fontFamily = previewFontCss(model.previewFont);
+    text.style.color = model.lineTextColor || '#2D241B';
+    text.style.minHeight = `${model.layout.bodyHeight - model.layout.bodyPaddingTop - model.layout.bodyPaddingBottom}px`;
+    text.textContent = model.text;
+    body.appendChild(text);
+    article.append(stage, body);
+    wrapper.append(meta, article);
+    wrapper.addEventListener('click', () => {
+      state.previewIndex = index;
+      renderPreviewOnly();
+      renderNodeEditor();
+    });
+    return wrapper;
+  }
+
+  function renderChoicePreview(model, index = 0) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
+    wrapper.dataset.previewIndex = String(index);
+    const meta = document.createElement('div');
+    meta.className = 'preview-meta';
+    meta.innerHTML = `
+      <div class="preview-meta-main">
+        <strong>${escapeHtml(model.title || '選項卡')}</strong>
+        <div class="subtle">選項卡</div>
+      </div>
+      <span class="pill">${escapeHtml(model.kind)}</span>
+    `;
+    const article = document.createElement('article');
+    article.className = 'rpg-scene';
+    article.style.height = `${model.layout.totalHeight}px`;
+    article.innerHTML = `
+      <div class="rpg-stage" style="height:${model.layout.heroHeight}px;">
+        <img class="hero" src="${escapeHtml(model.imageUrl)}" style="height:${model.layout.heroHeight}px;opacity:${model.heroImageOpacity ?? 1};transform:scale(${model.heroImageScale ?? 1});transform-origin:center center;" alt="">
+      </div>
+      <div class="rpg-body" style="height:${model.layout.questionHeight + model.layout.actionsHeight}px;padding:18px ${model.layout.bodyPaddingSide}px;">
+        <div class="rpg-text" style="min-height:${model.layout.questionHeight - 12}px;font-size:20px;font-weight:800;">${escapeHtml(model.prompt)}</div>
+        <div class="choice-actions">
+          <button class="choice-button" style="background:#F3BD63;">${escapeHtml(model.optionA.label)}</button>
+          <button class="choice-button" style="background:#D8E0EF;">${escapeHtml(model.optionB.label)}</button>
+        </div>
+      </div>
+    `;
+    wrapper.append(meta, article);
+    wrapper.addEventListener('click', () => {
+      state.previewIndex = index;
+      renderPreviewOnly();
+      renderNodeEditor();
+    });
+    return wrapper;
+  }
+
+  function renderLogCard(log) {
+    return `
+      <article class="log-card">
+        <div class="row space-between">
+          <strong>${escapeHtml(log.action)}</strong>
+          <span class="pill ${log.result === 'success' ? 'good' : 'bad'}">${escapeHtml(log.result)}</span>
+        </div>
+        <div class="subtle">${escapeHtml(log.createdAt)}</div>
+        <div class="subtle">${escapeHtml(log.targetId || '')}</div>
+      </article>
+    `;
+  }
+
+  function renderVersionCard(version) {
+    return `
+      <article class="version-card">
+        <div class="row space-between">
+          <strong>${escapeHtml(version.action)}</strong>
+          <span class="pill">${escapeHtml(version.role || 'system')}</span>
+        </div>
+        <div class="subtle">${escapeHtml(version.createdAt)}</div>
+        <div class="subtle">${escapeHtml(version.targetId || '')}</div>
+      </article>
+    `;
+  }
+
+  function createField(labelText, control, single = false) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `field${single === 'single' ? ' single' : ''}`;
+    if (single === 'single') wrapper.style.gridColumn = '1 / -1';
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    wrapper.append(label, control);
+    return wrapper;
+  }
+
+  function sectionHeading(text) {
+    const heading = document.createElement('h3');
+    heading.textContent = text;
+    heading.style.margin = '0 0 12px';
+    return heading;
+  }
+
+  function input(value, onInput) {
+    const element = document.createElement('input');
+    element.value = value ?? '';
+    element.addEventListener('input', () => onInput(element.value));
+    return element;
+  }
+
+  function numberInput(value, onInput) {
+    const element = document.createElement('input');
+    element.type = 'number';
+    element.value = Number(value || 0);
+    element.addEventListener('input', () => onInput(Number(element.value || 0)));
+    return element;
+  }
+
+  function decimalInput(value, min, max, step, onInput) {
+    const element = document.createElement('input');
+    element.type = 'number';
+    element.min = String(min);
+    element.max = String(max);
+    element.step = String(step);
+    element.value = Number(value ?? 0);
+    element.addEventListener('input', () => {
+      const next = Number(element.value);
+      onInput(Number.isFinite(next) ? next : value);
+    });
+    return element;
+  }
+
+  function rangeInput(value, min, max, step, onInput, formatValue = (next) => String(next)) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    const element = document.createElement('input');
+    element.type = 'range';
+    element.min = String(min);
+    element.max = String(max);
+    element.step = String(step);
+    element.value = String(value ?? min);
+    const output = document.createElement('div');
+    output.className = 'slider-value';
+    output.textContent = formatValue(Number(element.value));
+    element.addEventListener('input', () => {
+      const next = Number(element.value);
+      output.textContent = formatValue(next);
+      onInput(Number.isFinite(next) ? next : value);
+    });
+    wrap.append(element, output);
+    return wrap;
+  }
+
+  function textarea(value, onInput) {
+    const element = document.createElement('textarea');
+    element.value = value ?? '';
+    element.addEventListener('input', () => onInput(element.value));
+    return element;
+  }
+
+  function select(options, value, onChange) {
+    const element = document.createElement('select');
+    element.innerHTML = options.map(([optionValue, label]) => `<option value="${escapeHtml(optionValue)}">${escapeHtml(label)}</option>`).join('');
+    element.value = value ?? '';
+    element.addEventListener('change', () => onChange(element.value));
+    return element;
+  }
+
+  function colorInput(value, onChange, fallback = '#56616A') {
+    const wrap = document.createElement('div');
+    wrap.className = 'row';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '10px';
+    const color = document.createElement('input');
+    color.type = 'color';
+    color.value = normalizeHexColor(value, fallback);
+    color.style.width = '56px';
+    color.style.height = '44px';
+    color.style.padding = '0';
+    color.style.border = 'none';
+    color.style.background = 'transparent';
+    const text = document.createElement('input');
+    text.type = 'text';
+    text.value = normalizeHexColor(value, fallback);
+    const apply = (next) => {
+      const normalized = normalizeHexColor(next, fallback);
+      color.value = normalized;
+      text.value = normalized;
+      onChange(normalized);
     };
-  });
+    color.addEventListener('input', () => apply(color.value));
+    text.addEventListener('input', () => {
+      if (/^#?[0-9a-fA-F]{6}$/.test(text.value.trim())) {
+        apply(text.value.trim());
+      }
+    });
+    wrap.append(color, text);
+    return wrap;
+  }
 
-  initResizableColumns();
-  loadStories();
+  function normalizeHexColor(value, fallback = '#56616A') {
+    const raw = `${value || ''}`.trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toUpperCase();
+    if (/^[0-9a-fA-F]{6}$/.test(raw)) return `#${raw.toUpperCase()}`;
+    return fallback;
+  }
+
+  function imageInput(value, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    const urlInput = input(value || '', onChange);
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.addEventListener('change', async () => {
+      if (!fileInput.files?.[0]) return;
+      const asset = await uploadImage(fileInput.files[0]);
+      onChange(asset.url);
+    });
+    const preview = document.createElement('img');
+    preview.className = 'asset-preview';
+    preview.src = value || '';
+    urlInput.addEventListener('input', () => { preview.src = urlInput.value || ''; });
+    wrap.append(urlInput, fileInput, preview);
+    return wrap;
+  }
+
+  async function uploadImage(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(`${API_BASE}/upload-image`, {
+      method: 'POST',
+      headers: {
+        'x-lineat-role': state.role,
+        'x-lineat-actor': state.role
+      },
+      body: formData
+    });
+    const text = await response.text();
+    const payload = text ? JSON.parse(text) : {};
+    if (!response.ok) throw new Error(payload.error || '上傳失敗');
+    return payload.asset;
+  }
+
+  function fontOptions() {
+    const labels = {
+      default: 'LINE 預設字體'
+    };
+    return state.globalSettings.previewFontOptions.map((option) => [option, labels[option] || option]);
+  }
+
+  function textSizeOptions() {
+    return state.globalSettings.lineTextSizes.map((option) => [option, option]);
+  }
+
+  function nameplateSizeOptions() {
+    return Object.keys(state.globalSettings.nameplateSizePresets).map((option) => [option, option]);
+  }
+
+  function nameplateSizeValues() {
+    return Object.keys(state.globalSettings.nameplateSizePresets);
+  }
+
+  function nameplateSizeSlider(value, onInput) {
+    const values = nameplateSizeValues();
+    const index = Math.max(0, values.indexOf(value || 'lg'));
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    const element = document.createElement('input');
+    element.type = 'range';
+    element.min = '0';
+    element.max = String(Math.max(0, values.length - 1));
+    element.step = '1';
+    element.value = String(index);
+    element.dataset.optionValues = values.join(',');
+    const output = document.createElement('div');
+    output.className = 'slider-value';
+    output.textContent = values[index] || 'lg';
+    element.addEventListener('input', () => {
+      const nextIndex = Number(element.value);
+      const nextValue = values[nextIndex] || values[0] || 'lg';
+      output.textContent = nextValue;
+      onInput(nextValue);
+    });
+    wrap.append(element, output);
+    return wrap;
+  }
+
+  function characterOptions(includeBlank = false) {
+    const source = currentStory()?.characters?.length ? currentStory().characters : state.globalSettings.characters;
+    const list = source.map((character) => [character.id, character.name]);
+    return includeBlank ? [['', '不指定'], ...list] : list;
+  }
+
+  function nextNodeOptions(story) {
+    return [['', '未設定'], ...story.nodes.map((node) => [node.id, `${node.title} (${node.id})`])];
+  }
+
+  function describeNodeType(type) {
+    if (type === 'dialogue') return '對話卡';
+    if (type === 'narration') return '旁白卡';
+    if (type === 'choice') return '選項卡';
+    if (type === 'carousel') return '多頁訊息';
+    return type || '未分類';
+  }
+
+  function updateNodeField(field, value) {
+    const node = currentNode();
+    if (!node) return;
+    node[field] = value;
+    schedulePreview();
+  }
+
+  function updateNodePosition(axis, value) {
+    const node = currentNode();
+    if (!node) return;
+    node.position[axis] = value;
+    schedulePreview();
+  }
+
+  function moveStoryNode(nodeId, delta) {
+    const story = currentStory();
+    if (!story) return;
+    const index = story.nodes.findIndex((node) => node.id === nodeId);
+    const nextIndex = index + delta;
+    if (index < 0 || nextIndex < 0 || nextIndex >= story.nodes.length) return;
+    const [node] = story.nodes.splice(index, 1);
+    story.nodes.splice(nextIndex, 0, node);
+    state.previewStatus = 'Block 順序已調整，記得按「儲存故事」。';
+    renderStories();
+  }
+
+  function clearDeletedNodeReferences(story, deletedNodeId) {
+    story.nodes.forEach((node) => {
+      if (node.nextNodeId === deletedNodeId) node.nextNodeId = '';
+      if (node.optionA?.nextNodeId === deletedNodeId) node.optionA.nextNodeId = '';
+      if (node.optionB?.nextNodeId === deletedNodeId) node.optionB.nextNodeId = '';
+    });
+  }
+
+  function deleteStoryNode(nodeId) {
+    const story = currentStory();
+    if (!story) return;
+    const target = story.nodes.find((node) => node.id === nodeId);
+    if (!target) return;
+    const ok = window.confirm(`要刪除節點「${target.title || nodeId}」嗎？`);
+    if (!ok) return;
+    const index = story.nodes.findIndex((node) => node.id === nodeId);
+    story.nodes.splice(index, 1);
+    clearDeletedNodeReferences(story, nodeId);
+    if (story.startNodeId === nodeId) {
+      story.startNodeId = story.nodes[0]?.id || '';
+    }
+    const binding = currentTriggerBinding();
+    if (binding && binding.startNodeId === nodeId) {
+      binding.startNodeId = story.startNodeId || '';
+    }
+    if (state.currentNodeId === nodeId) {
+      state.currentNodeId = story.nodes[Math.max(0, index - 1)]?.id || story.nodes[0]?.id || '';
+      resetPreviewSelection();
+    }
+    state.previewStatus = '節點已刪除，相關連線已清空，記得按「儲存故事」。';
+    renderStories();
+    refreshPreview().catch(console.error);
+  }
+
+  function updatePageField(node, pageIndex, field, value) {
+    node.pages[pageIndex][field] = value;
+    schedulePreview();
+  }
+
+  function updateChoiceField(optionKey, field, value) {
+    const node = currentNode();
+    if (!node) return;
+    node[optionKey][field] = value;
+    schedulePreview();
+  }
+
+  function updateCharacter(index, field, value) {
+    if (!state.globalSettings?.characters?.[index]) return;
+    state.globalSettings.characters[index][field] = value;
+    schedulePreview();
+  }
+
+  function updateStoryCharacter(index, field, value) {
+    const story = currentStory();
+    if (!story) return;
+    const previousId = story.characters[index].id;
+    story.characters[index][field] = value;
+    if (field === 'id' && previousId && value && previousId !== value) {
+      story.nodes.forEach((node) => {
+        if (node.speakerCharacterId === previousId) node.speakerCharacterId = value;
+        if (node.companionCharacterId === previousId) node.companionCharacterId = value;
+        (node.pages || []).forEach((page) => {
+          if (page.speakerCharacterId === previousId) page.speakerCharacterId = value;
+          if (page.companionCharacterId === previousId) page.companionCharacterId = value;
+        });
+      });
+      (story.draftImport?.nodes || []).forEach((node) => {
+        if (node.speakerCharacterId === previousId) node.speakerCharacterId = value;
+        if (node.companionCharacterId === previousId) node.companionCharacterId = value;
+        (node.pages || []).forEach((page) => {
+          if (page.speakerCharacterId === previousId) page.speakerCharacterId = value;
+          if (page.companionCharacterId === previousId) page.companionCharacterId = value;
+        });
+      });
+    }
+    syncStoryCharacterPreview(index);
+    schedulePreview();
+  }
+
+  function updateDraftNodeField(field, value) {
+    const node = currentDraftNode();
+    if (!node) return;
+    node[field] = value;
+    node.status = 'corrected';
+    node.diff = computeDraftDiff(node);
+    renderDraftEditor(currentStory());
+    renderDraftImport(currentStory());
+  }
+
+  function updateDraftPageField(pageIndex, field, value) {
+    const node = currentDraftNode();
+    if (!node || !node.pages?.[pageIndex]) return;
+    node.pages[pageIndex][field] = value;
+    node.status = 'corrected';
+    node.diff = computeDraftDiff(node);
+    renderDraftEditor(currentStory());
+    renderDraftImport(currentStory());
+  }
+
+  function updateDraftChoiceField(optionKey, field, value) {
+    const node = currentDraftNode();
+    if (!node || !node[optionKey]) return;
+    node[optionKey][field] = value;
+    node.status = 'corrected';
+    node.diff = computeDraftDiff(node);
+    renderDraftEditor(currentStory());
+    renderDraftImport(currentStory());
+  }
+
+  function updateNodeType(node, type) {
+    node.type = type;
+    if (type === 'choice' && !node.optionA) {
+      node.prompt = '在這裡輸入選項提問。';
+      node.optionA = { label: '選項 A', feedback: '', nextNodeId: '' };
+      node.optionB = { label: '選項 B', feedback: '', nextNodeId: '' };
+      node.pages = node.pages || [defaultPage(1)];
+    }
+    if (type === 'carousel' && !node.pages) {
+      node.pages = [defaultPage(1)];
+    }
+    if (type === 'narration') {
+      node.speakerCharacterId = '';
+      node.companionCharacterId = '';
+    }
+    renderNodeEditor();
+    schedulePreview();
+  }
+
+  function defaultPage(index) {
+    return {
+      id: `page-${Date.now()}-${index}`,
+      title: `第 ${index} 頁`,
+      cardType: 'dialogue',
+      imagePath: '/public/story/01/image01.png',
+      text: '在這裡輸入多頁內容。',
+      previewFont: 'default',
+      lineTextSize: 'lg',
+      lineTextColor: '#2D241B',
+      heroImageOpacity: 1,
+      heroImageScale: 1,
+      nameplateSize: 'lg',
+      speakerCharacterId: 'char-bear',
+      companionCharacterId: ''
+    };
+  }
+
+  function layoutPanel(label, key, values, fields) {
+    const panel = document.createElement('section');
+    panel.className = 'panel';
+    panel.style.padding = '14px';
+    const title = document.createElement('h3');
+    title.textContent = label;
+    panel.appendChild(title);
+    const grid = document.createElement('div');
+    grid.className = 'field-grid';
+    fields.forEach((field) => {
+      grid.appendChild(createField(field, numberInput(values[field], (value) => {
+        state.globalSettings.cardLayouts[key][field] = value;
+        schedulePreview();
+      })));
+    });
+    panel.appendChild(grid);
+    return panel;
+  }
+
+  function escapeHtml(value) {
+    return `${value ?? ''}`
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function previewFontCss(fontKey = 'default') {
+    return '"PingFang TC", "Noto Sans TC", sans-serif';
+  }
+
+  function describeDraftWarnings(node) {
+    const warnings = [];
+    if (node.unboundCharacterName) warnings.push(`未綁定角色 ${node.unboundCharacterName}`);
+    if (node.type === 'dialogue' && !node.speakerCharacterId) warnings.push('對話卡缺少主講角色');
+    if ((node.type === 'dialogue' || node.type === 'narration') && !node.text) warnings.push('缺少文字');
+    if (node.type === 'choice') {
+      if (!node.optionA?.label || !node.optionB?.label) warnings.push('選項不完整');
+      if (!node.optionA?.nextNodeId && !node.optionB?.nextNodeId) warnings.push('尚未連線');
+    }
+    return warnings.length ? warnings.join(' / ') : '無';
+  }
 })();

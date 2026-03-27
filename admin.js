@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const { createAdminApp } = require('./lib/adminMount');
 
 const app = createAdminApp();
