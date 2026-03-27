@@ -15,6 +15,23 @@ npm start
 
 The app listens on `process.env.PORT` or `3001`.
 
+## Authoring And Deploy
+
+The local admin writes story content to `data/story-authoring.json` and image uploads to `public/uploads/`.
+
+If you want Render to show the same content as your local admin, commit and push those files together with your code changes before deploying.
+
+Recommended local workflow:
+
+```bash
+npm run admin
+# edit content at http://localhost:3002/
+git status
+git add data/story-authoring.json public/uploads
+git commit -m "Update story content"
+git push
+```
+
 ## Render deployment
 
 Create a new Web Service on Render with:

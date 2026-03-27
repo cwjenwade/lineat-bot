@@ -1,5 +1,3 @@
 .env
 node_modules
-data/story-authoring.json
-public/uploads/*
 !public/uploads/.gitkeep
