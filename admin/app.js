@@ -1541,6 +1541,7 @@
   }
 
   function renderPreviewModel(model, index) {
+    if (model.renderedImageUrl) return renderRenderedImagePreview(model, index);
     if (model.kind === 'choice') return renderChoicePreview(model, index);
     const wrapper = document.createElement('div');
     wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
@@ -1557,16 +1558,19 @@
     const article = document.createElement('article');
     article.className = 'rpg-scene';
     article.style.height = `${model.layout.totalHeight}px`;
+    article.style.position = 'relative';
     const stage = document.createElement('div');
     stage.className = 'rpg-stage';
     stage.style.height = `${model.layout.heroHeight}px`;
+    stage.style.position = 'absolute';
+    stage.style.left = '0';
+    stage.style.right = '0';
+    stage.style.top = '0';
     const hero = document.createElement('img');
     hero.className = 'hero';
     hero.src = model.imageUrl;
     hero.style.height = `${model.layout.heroHeight}px`;
     hero.style.opacity = `${model.heroImageOpacity ?? 1}`;
-    hero.style.transform = `scale(${model.heroImageScale ?? 1})`;
-    hero.style.transformOrigin = 'center center';
     stage.appendChild(hero);
 
     if (model.kind === 'dialogue') {
@@ -1578,7 +1582,7 @@
         avatar.style.top = `${role.avatarY}px`;
         if (role.placement === 'left') avatar.style.left = `${role.avatarX}px`;
         else avatar.style.right = `${role.avatarX}px`;
-        avatar.innerHTML = `<img src="${escapeHtml(role.avatarPath)}" alt="${escapeHtml(role.name)}" style="object-position:${role.avatarCenterX ?? 50}% ${role.avatarCenterY ?? 50}%;transform:scale(${role.avatarScale ?? 1});">`;
+        avatar.innerHTML = `<img src="${escapeHtml(role.avatarPath)}" alt="${escapeHtml(role.name)}">`;
         if (index === 0) {
           const preset = state.globalSettings.nameplateSizePresets[model.nameplateSize] || state.globalSettings.nameplateSizePresets.lg;
           const plate = document.createElement('div');
@@ -1602,6 +1606,10 @@
     const body = document.createElement('div');
     body.className = 'rpg-body';
     body.style.height = `${model.layout.bodyHeight}px`;
+    body.style.position = 'absolute';
+    body.style.left = '0';
+    body.style.right = '0';
+    body.style.top = `${model.layout.intersectionY}px`;
     body.style.paddingTop = `${model.layout.bodyPaddingTop}px`;
     body.style.paddingBottom = `${model.layout.bodyPaddingBottom}px`;
     body.style.paddingLeft = `${model.kind === 'dialogue' && model.speaker?.placement === 'left' ? model.layout.leftSafePadding : model.layout.bodyPaddingSide}px`;
@@ -1624,7 +1632,34 @@
     return wrapper;
   }
 
+  function renderRenderedImagePreview(model, index = 0) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
+    wrapper.dataset.previewIndex = String(index);
+    const meta = document.createElement('div');
+    meta.className = 'preview-meta';
+    meta.innerHTML = `
+      <div class="preview-meta-main">
+        <strong>${escapeHtml(model.title || '未命名卡片')}</strong>
+        <div class="subtle">${escapeHtml(model.kind === 'dialogue' ? '對話卡' : model.kind === 'narration' ? '旁白卡' : '選項卡')}</div>
+      </div>
+      <span class="pill">實際輸出</span>
+    `;
+    const article = document.createElement('article');
+    article.className = 'rpg-scene';
+    article.style.height = `${model.layout.totalHeight}px`;
+    article.innerHTML = `<img class="hero" src="${escapeHtml(model.renderedImageUrl)}" alt="${escapeHtml(model.title || '')}" style="width:100%;height:100%;display:block;object-fit:cover;">`;
+    wrapper.append(meta, article);
+    wrapper.addEventListener('click', () => {
+      state.previewIndex = index;
+      renderPreviewOnly();
+      renderNodeEditor();
+    });
+    return wrapper;
+  }
+
   function renderChoicePreview(model, index = 0) {
+    if (model.renderedImageUrl) return renderRenderedImagePreview(model, index);
     const wrapper = document.createElement('div');
     wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
     wrapper.dataset.previewIndex = String(index);

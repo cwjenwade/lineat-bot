@@ -78,7 +78,7 @@ function getSessionKey(event) {
 async function handleTextEvent(event) {
   const sessionKey = getSessionKey(event);
   const text = `${event.message.text || ''}`;
-  const result = storyRuntime.processTextInput(text, sessionKey);
+  const result = await storyRuntime.processTextInput(text, sessionKey);
   return client.replyMessage(event.replyToken, result.messages);
 }
 
