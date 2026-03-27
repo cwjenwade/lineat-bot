@@ -25,7 +25,8 @@ const client = new line.Client(config);
 const storyRuntime = createStoryRuntime({
   sessionStore: new Map(),
   publicBaseUrl,
-  requirePublishedAssets: process.env.NODE_ENV === 'production'
+  requirePublishedAssets: false,
+  usePublishedAssets: false
 });
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
