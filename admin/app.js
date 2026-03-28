@@ -127,9 +127,9 @@
     dom.deployRender.addEventListener('click', handleDeployRender);
     dom.saveStoryMeta.addEventListener('click', handleSaveStory);
     dom.validateStory.addEventListener('click', handleValidateStory);
-    dom.testTrigger.addEventListener('click', handleTestTrigger);
+    if (dom.testTrigger) dom.testTrigger.addEventListener('click', handleTestTrigger);
     dom.validateNode.addEventListener('click', handleValidateNode);
-    dom.testNode.addEventListener('click', handleTestNode);
+    if (dom.testNode) dom.testNode.addEventListener('click', handleTestNode);
     dom.simulateMessage.addEventListener('click', handleSimulateMessage);
     dom.simulateReset.addEventListener('click', handleResetSimulation);
     dom.moduleButtons.forEach((button) => button.addEventListener('click', () => handleAddNode(button.dataset.addNode)));
@@ -515,12 +515,33 @@
     return classes.join(' ');
   }
 
+  function focusTransitionField(target = 'node') {
+    requestAnimationFrame(() => {
+      const selector = target === 'choice'
+        ? '[data-transition-field="choice-a"] textarea, [data-transition-field="choice-b"] textarea'
+        : target === 'choice-a'
+          ? '[data-transition-field="choice-a"] textarea'
+          : target === 'choice-b'
+            ? '[data-transition-field="choice-b"] textarea'
+            : '[data-transition-field="node"] textarea';
+      const field = dom.nodeEditorForm.querySelector(selector);
+      if (!field) return;
+      field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      field.focus();
+      if (typeof field.setSelectionRange === 'function') {
+        const length = `${field.value || ''}`.length;
+        field.setSelectionRange(length, length);
+      }
+    });
+  }
+
   function currentPreviewContext() {
     const node = currentNode();
     const model = currentPreviewModel();
-    if (!node || !model) {
+    if (!node) {
       return {
         targetType: 'node',
+        node,
         model,
         pageIndex: -1,
         page: null
@@ -531,6 +552,7 @@
       const pageIndex = Math.min(state.previewIndex, Math.max(0, (node.pages?.length || 1) - 1));
       return {
         targetType: 'page',
+        node,
         model,
         pageIndex,
         page: node.pages?.[pageIndex] || null
@@ -542,6 +564,7 @@
       if (pageCount && state.previewIndex < pageCount) {
         return {
           targetType: 'page',
+          node,
           model,
           pageIndex: state.previewIndex,
           page: node.pages?.[state.previewIndex] || null
@@ -549,6 +572,7 @@
       }
       return {
         targetType: 'choice',
+        node,
         model,
         pageIndex: -1,
         page: null
@@ -557,6 +581,7 @@
 
     return {
       targetType: 'node',
+      node,
       model,
       pageIndex: -1,
       page: null
@@ -588,7 +613,13 @@
         event.stopPropagation();
         state.currentNodeId = card.dataset.nodeId;
         state.currentVirtualTransitionId = card.dataset.virtualTransitionId;
+        const entry = currentVirtualTransition();
+        const node = currentNode();
+        if (entry?.branch && Array.isArray(node?.pages)) {
+          state.previewIndex = node.pages.length;
+        }
         renderStories();
+        focusTransitionField(entry?.branch ? `choice-${entry.branch.toLowerCase()}` : 'node');
       });
     });
     dom.nodeGraph.querySelectorAll('[data-node-action]').forEach((button) => {
@@ -1101,6 +1132,32 @@
   async function handleAddNode(type) {
     const story = currentStory();
     if (!story) return;
+    const context = currentPreviewContext();
+    if (type === 'transition') {
+      const node = currentNode();
+      if (!node) return;
+      ensureNodeTransition(node.id);
+      if (node.type === 'choice' && Array.isArray(node.pages)) {
+        state.previewIndex = node.pages.length;
+      }
+      state.currentVirtualTransitionId = '';
+      state.previewStatus = node.type === 'choice'
+        ? '已開啟選後過場文案，請在選項 A / B 欄位中修改。'
+        : '已開啟下一幕過場文案，請在右側欄位中修改。';
+      renderStories();
+      refreshPreview().catch(console.error);
+      focusTransitionField(node.type === 'choice' ? 'choice' : 'node');
+      return;
+    }
+    if (context.targetType === 'page' && context.node?.pages?.length && (type === 'dialogue' || type === 'narration')) {
+      insertNodePage(context.node, context.pageIndex, {
+        cardType: type,
+        duplicateCurrent: false
+      });
+      state.previewStatus = `已在 ${context.node.title || context.node.id} 後新增${type === 'dialogue' ? '對話頁' : '旁白頁'}。`;
+      renderStories();
+      return;
+    }
     const result = await api(`/stories/${story.id}/nodes`, {
       method: 'POST',
       body: JSON.stringify({ type })
@@ -1284,6 +1341,29 @@
     dom.storyTitleInput.value = story.title || '';
     dom.storyDescriptionInput.value = story.description || '';
     dom.storyTriggerInput.value = triggerBinding?.keyword || '';
+    const previewContext = currentPreviewContext();
+    const isPageEditing = previewContext.targetType === 'page' && previewContext.node?.pages?.length;
+    dom.moduleButtons.forEach((button) => {
+      const type = button.dataset.addNode;
+      if (type === 'dialogue') {
+        button.textContent = isPageEditing ? '＋ 對話頁' : '＋ 對話卡';
+        button.title = isPageEditing ? '在目前這一幕後方插入新的對話頁。' : '新增新的對話節點。';
+      } else if (type === 'narration') {
+        button.textContent = isPageEditing ? '＋ 旁白頁' : '＋ 旁白卡';
+        button.title = isPageEditing ? '在目前這一幕後方插入新的旁白頁。' : '新增新的旁白節點。';
+      } else if (type === 'choice') {
+        button.textContent = '＋ 選項卡';
+        button.title = '新增新的選項節點。';
+      } else if (type === 'transition') {
+        button.textContent = '＋ 過場';
+        button.title = story.nodes.find((node) => node.id === state.currentNodeId)?.type === 'choice'
+          ? '為目前這張選項卡開啟選後過場文案。'
+          : '為目前節點開啟下一幕過場文案。';
+      } else if (type === 'carousel') {
+        button.textContent = '＋ 多頁訊息';
+        button.title = '新增新的多頁節點。';
+      }
+    });
     dom.saveStory.disabled = Boolean(currentBlocker);
     dom.saveStoryMeta.disabled = Boolean(currentBlocker);
     dom.publishAssets.disabled = hasDialogueBlockers;
@@ -1306,12 +1386,6 @@
     dom.deployRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
     dom.validateStory.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
     dom.validateNode.title = currentBlocker || '';
-    dom.testTrigger.textContent = '已停用：改用模擬事件';
-    dom.testTrigger.disabled = true;
-    dom.testNode.textContent = '已停用：改用模擬事件';
-    dom.testNode.disabled = true;
-    dom.testTrigger.title = '此功能已停用，請改用「模擬事件（走 runtime）」或真實 LINE webhook。';
-    dom.testNode.title = '此功能已停用，請改用「模擬事件（走 runtime）」或真實 LINE webhook。';
     if (!dom.simulateText.value || dom.simulateText.value === '101') {
       dom.simulateText.value = triggerKeyword || '';
     }
@@ -2189,27 +2263,51 @@
   }
 
   function renderVirtualTransitionInspector(entry, story) {
+    const node = currentNode();
     const section = document.createElement('section');
     section.className = 'panel';
     section.style.padding = '14px';
-    section.appendChild(sectionHeading('目前選到的過場映射（唯讀）'));
+    section.appendChild(sectionHeading('目前選到的過場映射'));
     const grid = document.createElement('div');
     grid.className = 'field-grid';
-    grid.append(
-      createField('來源', input(entry.branch ? `${entry.sourceNodeId} / ${entry.branch}` : entry.sourceNodeId, () => {})),
-      createField('下一節點', input(entry.nextNodeId || '未設定', () => {})),
-      createField('過場內容', textarea(entry.text || '', () => {}), 'single')
-    );
-    Array.from(grid.querySelectorAll('input, textarea')).forEach((element) => {
-      element.readOnly = true;
-      element.disabled = true;
-    });
+    const sourceField = createField('來源', input(entry.branch ? `${entry.sourceNodeId} / ${entry.branch}` : entry.sourceNodeId, () => {}));
+    const nextField = entry.branch
+      ? createField(
+          '下一節點',
+          select(nextNodeOptions(story), node?.[entry.branch === 'A' ? 'optionA' : 'optionB']?.nextNodeId || '', (value) => {
+            updateChoiceField(entry.branch === 'A' ? 'optionA' : 'optionB', 'nextNodeId', value);
+          })
+        )
+      : createField(
+          '下一節點',
+          select(nextNodeOptions(story), node?.nextNodeId || '', (value) => updateNodeField('nextNodeId', value))
+        );
+    const contentField = entry.branch
+      ? createField(
+          '過場內容',
+          textarea(node?.[entry.branch === 'A' ? 'optionA' : 'optionB']?.feedback || '', (value) => {
+            updateChoiceField(entry.branch === 'A' ? 'optionA' : 'optionB', 'feedback', value);
+          }),
+          'single'
+        )
+      : createField(
+          '過場內容',
+          textarea(node?.transitionText || '', (value) => updateNodeField('transitionText', value)),
+          'single'
+        );
+    contentField.dataset.transitionField = entry.branch ? `choice-${entry.branch.toLowerCase()}` : 'node';
+    const sourceInput = sourceField.querySelector('input');
+    if (sourceInput) {
+      sourceInput.readOnly = true;
+      sourceInput.disabled = true;
+    }
+    grid.append(sourceField, nextField, contentField);
     section.appendChild(grid);
     const tip = document.createElement('div');
     tip.className = 'subtle';
     tip.textContent = entry.branch
-      ? `這不是獨立 block。它是由下方「選項 ${entry.branch}」的選後過場文案映射出來的，請在下方欄位修改後再按「儲存故事」。`
-      : '這不是獨立 block。它是由下方「下一幕過場文案」映射出來的，請在下方欄位修改後再按「儲存故事」。';
+      ? `這不是獨立 block。你現在改的就是「選項 ${entry.branch}」的選後過場文案，改完後按「儲存故事」。`
+      : '這不是獨立 block。你現在改的就是「下一幕過場文案」，改完後按「儲存故事」。';
     section.appendChild(tip);
     return section;
   }
@@ -2254,7 +2352,9 @@
     }
     container.appendChild(createField('文字', textarea(node.text || '', (value) => updateNodeField('text', value)), 'single'));
     if (node.type !== 'choice') {
-      container.appendChild(createField('下一幕過場文案', textarea(node.transitionText || '', (value) => updateNodeField('transitionText', value)), 'single'));
+      const transitionField = createField('下一幕過場文案', textarea(node.transitionText || '', (value) => updateNodeField('transitionText', value)), 'single');
+      transitionField.dataset.transitionField = 'node';
+      container.appendChild(transitionField);
     }
     wrap.appendChild(container);
     return wrap;
@@ -2283,6 +2383,15 @@
     addButton.title = '在目前頁面後方插入一頁。';
     addButton.addEventListener('click', () => insertNodePage(node, context.pageIndex));
     actions.appendChild(addButton);
+
+    if (context.pageIndex >= 0) {
+      const duplicateButton = document.createElement('button');
+      duplicateButton.className = 'button secondary';
+      duplicateButton.textContent = '複製這頁';
+      duplicateButton.title = '複製目前頁面，在後方建立一頁可直接修改的新版本。';
+      duplicateButton.addEventListener('click', () => duplicateNodePage(node, context.pageIndex));
+      actions.appendChild(duplicateButton);
+    }
 
     if (context.pageIndex >= 0) {
       const movePrevButton = document.createElement('button');
@@ -2379,13 +2488,17 @@
       createField('頁面圖片', imageInput(page.imagePath, (value) => updatePageField(node, pageIndex, 'imagePath', value))),
       createField('大圖透明度', decimalInput(page.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageOpacity', value))),
       createField('大圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
-      createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updatePageField(node, pageIndex, 'speakerCharacterId', value))),
-      createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updatePageField(node, pageIndex, 'companionCharacterId', value))),
       createField('中文字體', select(fontOptions(), page.previewFont || 'default', (value) => updatePageField(node, pageIndex, 'previewFont', value))),
       createField('LINE 字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updatePageField(node, pageIndex, 'lineTextSize', value))),
-      createField('文字顏色', colorInput(page.lineTextColor || '#2D241B', (value) => updatePageField(node, pageIndex, 'lineTextColor', value))),
-      createField('姓名牌大小', nameplateSizeSlider(page.nameplateSize || 'lg', (value) => updatePageField(node, pageIndex, 'nameplateSize', value)))
+      createField('文字顏色', colorInput(page.lineTextColor || '#2D241B', (value) => updatePageField(node, pageIndex, 'lineTextColor', value)))
     );
+    if (page.cardType === 'dialogue') {
+      grid.append(
+        createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updatePageField(node, pageIndex, 'speakerCharacterId', value))),
+        createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updatePageField(node, pageIndex, 'companionCharacterId', value))),
+        createField('姓名牌大小', nameplateSizeSlider(page.nameplateSize || 'lg', (value) => updatePageField(node, pageIndex, 'nameplateSize', value)))
+      );
+    }
     grid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updatePageField(node, pageIndex, 'text', value)), 'single'));
     section.appendChild(grid);
     wrap.appendChild(section);
@@ -2430,7 +2543,11 @@
     optionAGrid.append(
       createField('文案', input(node.optionA?.label || '', (value) => updateChoiceField('optionA', 'label', value))),
       createField('下一節點', select(nextNodeOptions(story), node.optionA?.nextNodeId || '', (value) => updateChoiceField('optionA', 'nextNodeId', value))),
-      createField('選後過場文案', textarea(node.optionA?.feedback || '', (value) => updateChoiceField('optionA', 'feedback', value)))
+      (() => {
+        const field = createField('選後過場文案', textarea(node.optionA?.feedback || '', (value) => updateChoiceField('optionA', 'feedback', value)));
+        field.dataset.transitionField = 'choice-a';
+        return field;
+      })()
     );
     optionAPanel.appendChild(optionAGrid);
 
@@ -2443,7 +2560,11 @@
     optionBGrid.append(
       createField('文案', input(node.optionB?.label || '', (value) => updateChoiceField('optionB', 'label', value))),
       createField('下一節點', select(nextNodeOptions(story), node.optionB?.nextNodeId || '', (value) => updateChoiceField('optionB', 'nextNodeId', value))),
-      createField('選後過場文案', textarea(node.optionB?.feedback || '', (value) => updateChoiceField('optionB', 'feedback', value)))
+      (() => {
+        const field = createField('選後過場文案', textarea(node.optionB?.feedback || '', (value) => updateChoiceField('optionB', 'feedback', value)));
+        field.dataset.transitionField = 'choice-b';
+        return field;
+      })()
     );
     optionBPanel.appendChild(optionBGrid);
 
@@ -2549,8 +2670,13 @@
     wrapper.addEventListener('click', () => {
       state.currentVirtualTransitionId = entry.id || '';
       state.currentNodeId = entry.sourceNodeId || state.currentNodeId;
+      const node = currentNode();
+      if (entry.branch && Array.isArray(node?.pages)) {
+        state.previewIndex = node.pages.length;
+      }
       renderPreviewOnly();
       renderNodeEditor();
+      focusTransitionField(entry.branch ? `choice-${entry.branch.toLowerCase()}` : 'node');
     });
     return wrapper;
   }
@@ -3063,19 +3189,39 @@
     refreshPreview().catch(console.error);
   }
 
-  function insertNodePage(node, afterIndex = -1) {
+  function insertNodePage(node, afterIndex = -1, options = {}) {
     if (!node) return;
     node.pages = Array.isArray(node.pages) ? node.pages : [];
     const sourcePage = node.pages[Math.max(0, afterIndex)] || defaultPage(node.pages.length + 1);
-    const nextPage = clone(sourcePage);
+    const nextPage = options.duplicateCurrent
+      ? clone(sourcePage)
+      : defaultPage(node.pages.length + 1);
     nextPage.id = createLocalId('page');
     nextPage.title = `第 ${Math.max(0, afterIndex) + 2} 頁`;
+    if (options.cardType) {
+      nextPage.cardType = options.cardType;
+      if (options.cardType === 'dialogue') {
+        ensureDialogueRoleDefaults(nextPage);
+      } else if (options.cardType === 'narration') {
+        clearDialogueRoleFields(nextPage);
+      }
+    }
     node.pages.splice(afterIndex + 1, 0, nextPage);
     node.pages = normalizePageTitles(node.pages);
     state.previewIndex = Math.max(0, afterIndex + 1);
+    state.currentVirtualTransitionId = '';
     markDirty('已新增頁面，尚未儲存。');
-    renderNodeEditor();
-    schedulePreview();
+    renderStories();
+    refreshPreview().catch(console.error);
+  }
+
+  function duplicateNodePage(node, pageIndex) {
+    if (!node?.pages?.[pageIndex]) return;
+    insertNodePage(node, pageIndex, {
+      duplicateCurrent: true,
+      cardType: node.pages[pageIndex].cardType || 'dialogue'
+    });
+    markDirty('已複製目前頁面，尚未儲存。');
   }
 
   function moveNodePage(node, pageIndex, delta) {
