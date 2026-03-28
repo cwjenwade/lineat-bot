@@ -578,9 +578,10 @@
       renderPreviewOnly();
       return;
     }
-    const result = await api(`/stories/${story.id}/render/draft`, {
+    const result = await api('/render', {
       method: 'POST',
       body: JSON.stringify({
+        storyId: story.id,
         story,
         globalSettings: state.globalSettings,
         nodeId: node.id
@@ -1576,97 +1577,7 @@
   }
 
   function renderPreviewModel(model, index) {
-    if (model.kind === 'choice') return renderChoicePreview(model, index);
-    if (model.renderedImageUrl) return renderRenderedImagePreview(model, index);
-    const wrapper = document.createElement('div');
-    wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
-    wrapper.dataset.previewIndex = String(index);
-    const meta = document.createElement('div');
-    meta.className = 'preview-meta';
-    meta.innerHTML = `
-      <div class="preview-meta-main">
-        <strong>${escapeHtml(model.title || '未命名卡片')}</strong>
-        <div class="subtle">${escapeHtml(model.kind === 'dialogue' ? '對話卡' : model.kind === 'narration' ? '旁白卡' : '選項卡')}</div>
-      </div>
-      <span class="pill">${escapeHtml(model.kind === 'dialogue' ? '對話' : model.kind === 'narration' ? '旁白' : '選項')}</span>
-    `;
-    const article = document.createElement('article');
-    article.className = 'rpg-scene';
-    article.style.height = `${model.layout.totalHeight}px`;
-    article.style.position = 'relative';
-    const stage = document.createElement('div');
-    stage.className = 'rpg-stage';
-    stage.style.height = `${model.layout.heroHeight}px`;
-    stage.style.position = 'absolute';
-    stage.style.left = '0';
-    stage.style.right = '0';
-    stage.style.top = '0';
-    const hero = document.createElement('img');
-    hero.className = 'hero';
-    hero.src = model.imageUrl;
-    hero.style.height = `${model.layout.heroHeight}px`;
-    hero.style.opacity = `${model.heroImageOpacity ?? 1}`;
-    hero.style.objectPosition = '50% 50%';
-    hero.style.transform = `scale(${Number.isFinite(model.heroImageScale) ? model.heroImageScale : 1})`;
-    stage.appendChild(hero);
-
-    if (model.kind === 'dialogue') {
-      [model.speaker, model.companion].filter(Boolean).forEach((role, index) => {
-        const avatar = document.createElement('div');
-        avatar.className = 'rpg-avatar';
-        avatar.style.width = `${role.avatarSize}px`;
-        avatar.style.height = `${role.avatarSize}px`;
-        avatar.style.top = `${role.avatarY}px`;
-        if (role.placement === 'left') avatar.style.left = `${role.avatarX}px`;
-        else avatar.style.right = `${role.avatarX}px`;
-        avatar.innerHTML = `<img src="${escapeHtml(role.avatarPath)}" alt="${escapeHtml(role.name)}" style="object-position:${role.avatarCenterX ?? 50}% ${role.avatarCenterY ?? 50}%;transform:scale(${role.avatarScale ?? 1});">`;
-        if (index === 0) {
-          const preset = state.globalSettings.nameplateSizePresets[model.nameplateSize] || state.globalSettings.nameplateSizePresets.lg;
-          const plate = document.createElement('div');
-          plate.className = 'rpg-nameplate';
-          plate.textContent = role.name;
-          plate.style.top = `${role.nameplateY}px`;
-          plate.style.background = role.nameplateColor;
-          plate.style.color = role.nameplateTextColor;
-          plate.style.padding = `${preset.paddingY}px ${preset.paddingX}px`;
-          plate.style.borderRadius = `${preset.cornerRadius}px`;
-          plate.style.fontSize = preset.label === 'xl' ? '19px' : preset.label === 'md' ? '15px' : '17px';
-          if (role.nameplateAnchor === 'right-percent') plate.style.right = `${role.nameplateRightPercent}%`;
-          else if (role.nameplateAnchor === 'right-fixed') plate.style.right = `${role.nameplateX}px`;
-          else plate.style.left = `${role.nameplateX}px`;
-          stage.appendChild(plate);
-        }
-        stage.appendChild(avatar);
-      });
-    }
-
-    const body = document.createElement('div');
-    body.className = 'rpg-body';
-    body.style.height = `${model.layout.bodyHeight}px`;
-    body.style.position = 'absolute';
-    body.style.left = '0';
-    body.style.right = '0';
-    body.style.top = `${model.layout.intersectionY}px`;
-    body.style.paddingTop = `${model.layout.bodyPaddingTop}px`;
-    body.style.paddingBottom = `${model.layout.bodyPaddingBottom}px`;
-    body.style.paddingLeft = `${model.kind === 'dialogue' && model.speaker?.placement === 'left' ? model.layout.leftSafePadding : model.layout.bodyPaddingSide}px`;
-    body.style.paddingRight = `${model.kind === 'dialogue' && model.speaker?.placement === 'right' ? model.layout.rightSafePadding : model.layout.bodyPaddingSide}px`;
-    const text = document.createElement('div');
-    text.className = 'rpg-text';
-    text.style.fontSize = model.lineTextSize === 'xl' ? '24px' : model.lineTextSize === 'md' ? '18px' : '20px';
-    text.style.fontFamily = previewFontCss(model.previewFont);
-    text.style.color = model.lineTextColor || '#2D241B';
-    text.style.minHeight = `${model.layout.bodyHeight - model.layout.bodyPaddingTop - model.layout.bodyPaddingBottom}px`;
-    text.textContent = model.text;
-    body.appendChild(text);
-    article.append(stage, body);
-    wrapper.append(meta, article);
-    wrapper.addEventListener('click', () => {
-      state.previewIndex = index;
-      renderPreviewOnly();
-      renderNodeEditor();
-    });
-    return wrapper;
+    return renderRenderedImagePreview(model, index);
   }
 
   function renderRenderedImagePreview(model, index = 0) {
@@ -1680,89 +1591,12 @@
         <strong>${escapeHtml(model.title || '未命名卡片')}</strong>
         <div class="subtle">${escapeHtml(model.kind === 'dialogue' ? '對話卡' : model.kind === 'narration' ? '旁白卡' : '選項卡')}</div>
       </div>
-      <span class="pill">實際輸出</span>
+      <span class="pill">Renderer</span>
     `;
     const article = document.createElement('article');
     article.className = 'rpg-scene';
     article.style.height = `${model.layout.totalHeight}px`;
-    article.innerHTML = `<img class="hero" src="${escapeHtml(model.renderedImageUrl)}" alt="${escapeHtml(model.title || '')}" style="width:100%;height:100%;display:block;object-fit:cover;">`;
-    wrapper.append(meta, article);
-    wrapper.addEventListener('click', () => {
-      state.previewIndex = index;
-      renderPreviewOnly();
-      renderNodeEditor();
-    });
-    return wrapper;
-  }
-
-  function renderChoicePreview(model, index = 0) {
-    const wrapper = document.createElement('div');
-    wrapper.className = `preview-card ${index === state.previewIndex ? 'selected' : ''}`;
-    wrapper.dataset.previewIndex = String(index);
-    const meta = document.createElement('div');
-    meta.className = 'preview-meta';
-    meta.innerHTML = `
-      <div class="preview-meta-main">
-        <strong>${escapeHtml(model.title || '選項卡')}</strong>
-        <div class="subtle">選項卡</div>
-      </div>
-      <span class="pill">${escapeHtml(model.kind)}</span>
-    `;
-    const article = document.createElement('article');
-    article.className = 'rpg-scene';
-    article.style.height = `${model.layout.totalHeight}px`;
-    article.style.display = 'flex';
-    article.style.flexDirection = 'column';
-
-    const heroWrap = document.createElement('div');
-    heroWrap.className = 'rpg-stage';
-    heroWrap.style.height = `${model.layout.heroHeight}px`;
-    const hero = document.createElement('img');
-    hero.className = 'hero';
-    hero.src = model.renderedImageUrl || model.imageUrl;
-    hero.alt = model.title || '';
-    hero.style.height = `${model.layout.heroHeight}px`;
-    hero.style.opacity = `${model.heroImageOpacity ?? 1}`;
-    hero.style.objectPosition = '50% 50%';
-    hero.style.transform = `scale(${Number.isFinite(model.heroImageScale) ? model.heroImageScale : 1})`;
-    heroWrap.appendChild(hero);
-
-    const promptWrap = document.createElement('div');
-    promptWrap.className = 'rpg-body';
-    promptWrap.style.height = `${model.layout.questionHeight}px`;
-    promptWrap.style.display = 'flex';
-    promptWrap.style.alignItems = 'center';
-    promptWrap.style.justifyContent = 'center';
-    promptWrap.style.padding = '18px 20px';
-    promptWrap.style.background = '#FFF8EF';
-    const promptText = document.createElement('div');
-    promptText.className = 'rpg-text';
-    promptText.style.fontSize = '20px';
-    promptText.style.fontWeight = '800';
-    promptText.style.color = '#2D241B';
-    promptText.textContent = model.prompt;
-    promptWrap.appendChild(promptText);
-
-    const actionsWrap = document.createElement('div');
-    actionsWrap.style.height = `${model.layout.actionsHeight}px`;
-    actionsWrap.style.display = 'flex';
-    actionsWrap.style.flexDirection = 'column';
-    actionsWrap.style.gap = `${model.layout.buttonSpacing}px`;
-    actionsWrap.style.padding = '20px';
-    actionsWrap.style.background = '#FFFDF8';
-    const optionA = document.createElement('button');
-    optionA.className = 'choice-button';
-    optionA.style.background = '#F3BD63';
-    optionA.style.color = '#FFFFFF';
-    optionA.textContent = model.optionA.label;
-    const optionB = document.createElement('button');
-    optionB.className = 'choice-button';
-    optionB.style.background = '#D8E0EF';
-    optionB.style.color = '#FFFFFF';
-    optionB.textContent = model.optionB.label;
-    actionsWrap.append(optionA, optionB);
-
-    article.append(heroWrap, promptWrap, actionsWrap);
+    article.innerHTML = `<img class="hero" src="${escapeHtml(model.previewImageUrl || model.renderedImageUrl || '')}" alt="${escapeHtml(model.title || '')}" style="width:100%;height:100%;display:block;object-fit:cover;">`;
     wrapper.append(meta, article);
     wrapper.addEventListener('click', () => {
       state.previewIndex = index;
