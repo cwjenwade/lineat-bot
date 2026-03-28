@@ -461,7 +461,10 @@
     const result = await api(`/stories/${story.id}/publish-assets`, {
       method: 'POST'
     });
-    state.previewStatus = `已產生 ${result.published.assetCount} 張部署圖片，可直接 commit 到 Render。`;
+    const nodeMessages = (result.published.nodeResults || []).map((entry) => entry.message).join('\n');
+    state.previewStatus = result.published.ok
+      ? `成功：${result.published.successCount} / ${result.published.nodeCount}\n${nodeMessages}`
+      : `成功：${result.published.successCount} / ${result.published.nodeCount}\n失敗：${result.published.failedCount}\n${nodeMessages}`;
     renderPreviewOnly();
   }
 
