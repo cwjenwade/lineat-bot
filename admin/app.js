@@ -12,10 +12,21 @@
     preview: null,
     previewIssues: [],
     previewStatus: '尚未載入節點。',
+    isDirty: false,
+    pendingAction: '',
+    lastActionResult: '',
     storyStage: 'final',
     previewPanel: 'visual',
-    previewIndex: 0
+    previewIndex: 0,
+    justDraggedNodeId: '',
+    currentVirtualTransitionId: '',
+    graphLayoutOverrides: {}
   };
+
+  const BLOCK_GRID_SIZE = 24;
+  const BLOCK_MIN_X = 40;
+  const BLOCK_MIN_Y = 80;
+  const BLOCK_FLOW_SPACING_X = 420;
 
   const dom = {};
 
@@ -36,6 +47,8 @@
     dom.storyList = document.getElementById('story-list');
     dom.editorStoryTitle = document.getElementById('editor-story-title');
     dom.editorStoryMeta = document.getElementById('editor-story-meta');
+    dom.duplicateStory = document.getElementById('duplicate-story');
+    dom.deleteStory = document.getElementById('delete-story');
     dom.storyTitleInput = document.getElementById('story-title-input');
     dom.storyDescriptionInput = document.getElementById('story-description-input');
     dom.storyStartNode = document.getElementById('story-start-node');
@@ -73,6 +86,8 @@
     dom.nodeEditorShell = document.getElementById('node-editor-shell');
     dom.nodeEditorForm = document.getElementById('node-editor-form');
     dom.moduleButtons = Array.from(document.querySelectorAll('[data-add-node]'));
+    dom.quickDialogueInput = document.getElementById('quick-dialogue-input');
+    dom.appendDialogueFlow = document.getElementById('append-dialogue-flow');
 
     dom.previewStatus = document.getElementById('preview-status');
     dom.scenePreview = document.getElementById('scene-preview');
@@ -97,6 +112,8 @@
   function bindStaticEvents() {
     dom.refreshAll.addEventListener('click', reloadAll);
     dom.createStory.addEventListener('click', handleCreateStory);
+    dom.duplicateStory.addEventListener('click', handleDuplicateStory);
+    dom.deleteStory.addEventListener('click', handleDeleteStory);
     dom.addStoryCharacter.addEventListener('click', handleAddStoryCharacter);
     dom.addProtagonistTemplate.addEventListener('click', () => handleAddStoryCharacter('protagonist'));
     dom.addSupportingTemplate.addEventListener('click', () => handleAddStoryCharacter('supporting'));
@@ -116,6 +133,7 @@
     dom.simulateMessage.addEventListener('click', handleSimulateMessage);
     dom.simulateReset.addEventListener('click', handleResetSimulation);
     dom.moduleButtons.forEach((button) => button.addEventListener('click', () => handleAddNode(button.dataset.addNode)));
+    dom.appendDialogueFlow.addEventListener('click', handleAppendDialogueFlow);
     dom.storyTitleInput.addEventListener('input', () => updateStoryField('title', dom.storyTitleInput.value));
     dom.storyDescriptionInput.addEventListener('input', () => updateStoryField('description', dom.storyDescriptionInput.value));
     dom.storyTriggerInput.addEventListener('input', () => updateStoryTrigger(dom.storyTriggerInput.value));
@@ -153,6 +171,260 @@
     return JSON.parse(JSON.stringify(value));
   }
 
+  function createLocalId(prefix = 'item') {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  }
+
+  function snapToBlockGrid(value, minimum = 0) {
+    return Math.max(minimum, Math.round(value / BLOCK_GRID_SIZE) * BLOCK_GRID_SIZE);
+  }
+
+  function hasCustomGraphLayout(story) {
+    const nodes = story?.nodes || [];
+    if (nodes.length <= 1) return false;
+    const positions = nodes
+      .map((node) => ({
+        x: Number(node.position?.x),
+        y: Number(node.position?.y)
+      }))
+      .filter((pos) => Number.isFinite(pos.x) && Number.isFinite(pos.y));
+    if (positions.length !== nodes.length) return false;
+
+    const uniqueX = new Set(positions.map((pos) => snapToBlockGrid(pos.x)));
+    const xSpread = Math.max(...positions.map((pos) => pos.x)) - Math.min(...positions.map((pos) => pos.x));
+    const yValues = positions.map((pos) => pos.y).slice().sort((a, b) => a - b);
+    const yGaps = yValues.slice(1).map((value, index) => value - yValues[index]);
+    const mostlyVerticalGaps = yGaps.length ? yGaps.every((gap) => gap >= 100 && gap <= 180) : true;
+    const looksLikeLegacyVertical = uniqueX.size <= 2 && xSpread <= 72 && mostlyVerticalGaps;
+
+    return !looksLikeLegacyVertical;
+  }
+
+  function getGraphLayoutMode(story) {
+    if (!story?.id) return 'flow';
+    return state.graphLayoutOverrides[story.id]
+      || (hasCustomGraphLayout(story) ? 'custom' : 'flow');
+  }
+
+  function buildGraphEntries(story) {
+    const nodes = story?.nodes || [];
+    const byId = new Map(nodes.map((node) => [node.id, node]));
+    const traversal = state.storyDetail?.traversal || null;
+    if (!traversal?.entries?.length) {
+      return {
+        entries: nodes.map((node) => ({
+          ...node,
+          graphId: node.id,
+          virtual: false,
+          unreachable: false
+        })),
+        unreachableIds: new Set(),
+        deadEndIds: new Set()
+      };
+    }
+
+    const reachableIds = new Set(traversal.reachableNodeIds || []);
+    const unreachableIds = new Set(traversal.unreachableNodeIds || []);
+    const deadEndIds = new Set(traversal.deadEndNodeIds || []);
+    const entries = traversal.entries.map((entry) => {
+      if (entry.virtual) {
+        return {
+          ...entry,
+          graphId: entry.id,
+          title: entry.branch ? `過場 ${entry.branch}` : '過場',
+          summary: entry.text || '',
+          unreachable: false
+        };
+      }
+      const node = byId.get(entry.nodeId || entry.id);
+      return {
+        ...(node || entry),
+        graphId: entry.id,
+        virtual: false,
+        unreachable: false
+      };
+    });
+
+    nodes
+      .filter((node) => unreachableIds.has(node.id))
+      .forEach((node) => {
+        entries.push({
+          ...node,
+          graphId: node.id,
+          virtual: false,
+          unreachable: true
+        });
+      });
+
+    return {
+      entries,
+      unreachableIds,
+      deadEndIds,
+      reachableIds
+    };
+  }
+
+  function buildGraphPlacements(story, entries = []) {
+    const nodes = story?.nodes || [];
+    const useCustomLayout = getGraphLayoutMode(story) === 'custom';
+    const placed = new Map();
+    const actualEntries = entries.length ? entries.filter((entry) => !entry.virtual) : nodes;
+    actualEntries.forEach((node, index) => {
+      if (useCustomLayout) {
+        placed.set(node.graphId || node.id, {
+          x: Math.max(BLOCK_MIN_X, Number(node.position?.x ?? (BLOCK_MIN_X + index * 300))),
+          y: Math.max(BLOCK_MIN_Y, Number(node.position?.y ?? 96))
+        });
+        return;
+      }
+      placed.set(node.graphId || node.id, {
+        x: BLOCK_MIN_X + index * BLOCK_FLOW_SPACING_X,
+        y: 96
+      });
+    });
+    entries
+      .filter((entry) => entry.virtual)
+      .forEach((entry, index) => {
+        const source = placed.get(entry.sourceNodeId);
+        const target = placed.get(entry.nextNodeId);
+        if (source && target) {
+          placed.set(entry.graphId || entry.id, {
+            x: snapToBlockGrid(((source.x + target.x) / 2) - 70, BLOCK_MIN_X),
+            y: snapToBlockGrid(
+              source.y + (entry.branch === 'A' ? -132 : entry.branch === 'B' ? 176 : -132),
+              24
+            )
+          });
+          return;
+        }
+        if (source) {
+          placed.set(entry.graphId || entry.id, {
+            x: snapToBlockGrid(source.x + 250, BLOCK_MIN_X),
+            y: snapToBlockGrid(
+              source.y + (entry.branch === 'A' ? -132 : entry.branch === 'B' ? 176 : -132),
+              24
+            )
+          });
+          return;
+        }
+        placed.set(entry.graphId || entry.id, {
+          x: BLOCK_MIN_X + index * 260,
+          y: 40
+        });
+      });
+    return placed;
+  }
+
+  function defaultSpeakerId() {
+    return currentStory()?.characters?.[0]?.id
+      || state.globalSettings?.characters?.[0]?.id
+      || '';
+  }
+
+  function createLocalNodeTemplate(type = 'dialogue', order = 1) {
+    const base = {
+      id: createLocalId(type),
+      title: type === 'narration' ? `Narration ${order}` : `Scene ${order}`,
+      type,
+      imagePath: '/public/story/01/image01.png',
+      text: '在這裡輸入內容。',
+      previewFont: 'default',
+      lineTextSize: 'lg',
+      lineTextColor: '#2D241B',
+      heroImageOpacity: 1,
+      heroImageScale: 1,
+      nameplateSize: 'lg',
+      speakerCharacterId: defaultSpeakerId(),
+      companionCharacterId: '',
+      nextNodeId: '',
+      continueLabel: '下一步',
+      position: {
+        x: 80,
+        y: 80 + (order - 1) * 140
+      }
+    };
+
+    if (type === 'narration') {
+      return {
+        ...base,
+        speakerCharacterId: '',
+        companionCharacterId: ''
+      };
+    }
+
+    if (type === 'transition') {
+      return {
+        ...base,
+        title: `Transition ${order}`,
+        imagePath: '',
+        text: '在這裡輸入轉場文案。',
+        speakerCharacterId: '',
+        companionCharacterId: '',
+        continueLabel: '繼續',
+        backgroundColor: '#FFF4DE'
+      };
+    }
+
+    if (type === 'choice') {
+      return {
+        ...base,
+        title: `Choice ${order}`,
+        prompt: '在這裡輸入選項提問。',
+        optionA: { label: '選項 A', feedback: '', nextNodeId: '' },
+        optionB: { label: '選項 B', feedback: '', nextNodeId: '' },
+        pages: [defaultPage(1)]
+      };
+    }
+
+    if (type === 'carousel') {
+      return {
+        ...base,
+        title: `Carousel ${order}`,
+        speakerCharacterId: '',
+        companionCharacterId: '',
+        pages: [defaultPage(1)]
+      };
+    }
+
+    return base;
+  }
+
+  function cloneNodeForInsert(node) {
+    const duplicated = clone(node);
+    duplicated.id = createLocalId(node.type || 'node');
+    duplicated.title = `${node.title || 'Scene'} 副本`;
+    duplicated.position = {
+      x: node.position?.x || 80,
+      y: node.position?.y || 80
+    };
+    if (Array.isArray(duplicated.pages)) {
+      duplicated.pages = duplicated.pages.map((page, index) => ({
+        ...page,
+        id: createLocalId('page'),
+        title: page.title || `第 ${index + 1} 頁`
+      }));
+    }
+    return duplicated;
+  }
+
+  function normalizePageTitles(pages = []) {
+    return pages.map((page, index) => ({
+      ...page,
+      title: page.title && !/^第\s+\d+\s+頁$/.test(page.title)
+        ? page.title
+        : `第 ${index + 1} 頁`
+    }));
+  }
+
+  function findStoryCharacterByName(name) {
+    const normalized = `${name || ''}`.trim().replace(/\s+/g, '').toLowerCase();
+    if (!normalized) return null;
+    const source = currentStory()?.characters || [];
+    return source.find((character) =>
+      `${character.name || ''}`.trim().replace(/\s+/g, '').toLowerCase() === normalized
+    ) || null;
+  }
+
   function currentStory() {
     return state.storyDetail?.story || null;
   }
@@ -167,8 +439,80 @@
     return state.globalSettings.triggerBindings.find((binding) => binding.storyId === state.currentStoryId) || null;
   }
 
+  function currentTriggerKeyword() {
+    return `${currentTriggerBinding()?.keyword || ''}`.trim();
+  }
+
   function currentPreviewModel() {
     return state.preview?.models?.[state.previewIndex] || null;
+  }
+
+  function currentVirtualTransition() {
+    const entries = [
+      ...(state.preview?.transitionPreviews || []),
+      ...((state.storyDetail?.traversal?.entries || []).filter((entry) => entry.virtual))
+    ];
+    return entries.find((entry) => entry.id === state.currentVirtualTransitionId) || null;
+  }
+
+  function currentDialogueBlockers(story = currentStory()) {
+    if (!story) return [];
+    const blockers = [];
+    story.nodes.forEach((node) => {
+      if (node.type === 'dialogue' && !node.speakerCharacterId) {
+        blockers.push({ nodeId: node.id, scope: 'node', message: `節點 ${node.title || node.id} 缺少主講角色` });
+      }
+      (node.pages || []).forEach((page) => {
+        if (page.cardType === 'dialogue' && !page.speakerCharacterId) {
+          blockers.push({ nodeId: node.id, pageId: page.id, scope: 'page', message: `${node.title || node.id} / ${page.title || page.id} 缺少主講角色` });
+        }
+      });
+    });
+    return blockers;
+  }
+
+  function currentRenderBlocker() {
+    const node = currentNode();
+    const context = currentPreviewContext();
+    if (!node) return '';
+    if (context.targetType === 'page' && context.page?.cardType === 'dialogue' && !context.page?.speakerCharacterId) {
+      return '目前這張對話頁尚未設定主講角色，已禁止預覽與儲存。';
+    }
+    if (context.targetType !== 'page' && node.type === 'dialogue' && !node.speakerCharacterId) {
+      return '目前這張對話卡尚未設定主講角色，已禁止預覽與儲存。';
+    }
+    return '';
+  }
+
+  function firstDialogueBlocker(story = currentStory()) {
+    return currentDialogueBlockers(story)[0]?.message || '';
+  }
+
+  function markDirty(message = '已修改，尚未儲存。') {
+    state.isDirty = true;
+    state.lastActionResult = 'dirty';
+    state.previewStatus = message;
+  }
+
+  function clearDirty(message = '') {
+    state.isDirty = false;
+    if (message) {
+      state.previewStatus = message;
+    }
+  }
+
+  function setPendingAction(action = '') {
+    state.pendingAction = action;
+  }
+
+  function previewStatusClassName() {
+    const classes = ['status-box'];
+    if (state.pendingAction) return `${classes.concat('is-pending').join(' ')}`;
+    if (currentRenderBlocker()) return `${classes.concat('is-blocked').join(' ')}`;
+    if (state.lastActionResult === 'saved') return `${classes.concat('is-success').join(' ')}`;
+    if (state.lastActionResult === 'error') return `${classes.concat('is-error').join(' ')}`;
+    if (state.lastActionResult === 'blocked') return `${classes.concat('is-blocked').join(' ')}`;
+    return classes.join(' ');
   }
 
   function currentPreviewContext() {
@@ -221,6 +565,65 @@
 
   function resetPreviewSelection() {
     state.previewIndex = 0;
+    state.currentVirtualTransitionId = '';
+  }
+
+  function bindGraphEvents(story) {
+    dom.nodeGraph.querySelectorAll('.graph-node[data-node-id]:not([data-virtual-transition-id])').forEach((card) => {
+      card.addEventListener('pointerdown', (event) => startNodeDrag(event, card.dataset.nodeId));
+      card.addEventListener('click', () => {
+        state.currentVirtualTransitionId = '';
+        if (state.justDraggedNodeId === card.dataset.nodeId) {
+          state.justDraggedNodeId = '';
+          return;
+        }
+        state.currentNodeId = card.dataset.nodeId;
+        resetPreviewSelection();
+        renderStories();
+        refreshPreview().catch(console.error);
+      });
+    });
+    dom.nodeGraph.querySelectorAll('.graph-node[data-virtual-transition-id]').forEach((card) => {
+      card.addEventListener('click', (event) => {
+        event.stopPropagation();
+        state.currentNodeId = card.dataset.nodeId;
+        state.currentVirtualTransitionId = card.dataset.virtualTransitionId;
+        renderStories();
+      });
+    });
+    dom.nodeGraph.querySelectorAll('[data-node-action]').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const action = button.dataset.nodeAction;
+        const nodeId = button.dataset.nodeId;
+        if (action === 'move-prev') {
+          moveStoryNode(nodeId, -1);
+        } else if (action === 'move-next') {
+          moveStoryNode(nodeId, 1);
+        } else if (action === 'duplicate') {
+          duplicateStoryNode(nodeId);
+        } else if (action === 'insert-dialogue') {
+          insertDialogueAfter(nodeId);
+        } else if (action === 'insert-narration') {
+          insertNodeAfter(nodeId, 'narration');
+        } else if (action === 'insert-choice') {
+          insertNodeAfter(nodeId, 'choice');
+        } else if (action === 'insert-transition') {
+          ensureNodeTransition(nodeId);
+        } else if (action === 'delete') {
+          deleteStoryNode(nodeId);
+        }
+      });
+    });
+  }
+
+  function renderGraphOnly(story = currentStory()) {
+    if (!story) {
+      dom.nodeGraph.innerHTML = '';
+      return;
+    }
+    dom.nodeGraph.innerHTML = renderNodeGraph(story);
+    bindGraphEvents(story);
   }
 
   async function reloadAll() {
@@ -232,7 +635,9 @@
     state.stories = storiesPayload.stories;
     state.globalSettings = settingsPayload.globalSettings;
 
-    const nextStoryId = state.currentStoryId || state.stories[0]?.id || '';
+    const nextStoryId = state.stories.some((story) => story.id === state.currentStoryId)
+      ? state.currentStoryId
+      : (state.stories[0]?.id || '');
     if (nextStoryId) {
       await loadStory(nextStoryId);
     } else {
@@ -241,7 +646,10 @@
       state.currentNodeId = '';
       state.preview = null;
       state.previewIssues = [];
+      state.graphLayoutOverrides = {};
     }
+    state.isDirty = false;
+    state.pendingAction = '';
     render();
   }
 
@@ -250,10 +658,12 @@
     state.storyDetail = payload;
     state.currentStoryId = storyId;
     const story = payload.story;
+    state.graphLayoutOverrides[story.id] = hasCustomGraphLayout(story) ? 'custom' : 'flow';
     state.currentNodeId = state.currentNodeId && story.nodes.some((node) => node.id === state.currentNodeId)
       ? state.currentNodeId
       : (story.startNodeId || story.nodes[0]?.id || '');
     resetPreviewSelection();
+    state.isDirty = false;
     await refreshPreview();
   }
 
@@ -268,9 +678,43 @@
     render();
   }
 
+  async function handleDuplicateStory() {
+    const story = currentStory();
+    if (!story) return;
+    const nextTitle = window.prompt('複製後故事名稱', `${story.title} 副本`);
+    if (nextTitle === null) return;
+    const payload = await api(`/stories/${story.id}/duplicate`, {
+      method: 'POST',
+      body: JSON.stringify({ title: nextTitle.trim() })
+    });
+    await reloadAll();
+    await loadStory(payload.story.id);
+    state.previewStatus = `已建立故事副本：${payload.story.title}`;
+    render();
+  }
+
+  async function handleDeleteStory() {
+    const story = currentStory();
+    if (!story) return;
+    const ok = window.confirm(`要刪除故事「${story.title}」嗎？這個操作會直接移除整個故事。`);
+    if (!ok) return;
+    const payload = await api(`/stories/${story.id}`, {
+      method: 'DELETE'
+    });
+    state.currentStoryId = payload.nextStoryId || '';
+    state.currentNodeId = '';
+    await reloadAll();
+    if (payload.nextStoryId) {
+      await loadStory(payload.nextStoryId);
+    }
+    state.previewStatus = `故事「${story.title}」已刪除。`;
+    render();
+  }
+
   function updateStoryField(field, value) {
     if (!currentStory()) return;
     state.storyDetail.story[field] = value;
+    markDirty('故事設定已修改，尚未儲存。');
     render();
     schedulePreview();
   }
@@ -289,24 +733,45 @@
         startNodeId: currentStory().startNodeId
       });
     }
+    markDirty('觸發關鍵字已修改，尚未儲存。');
     render();
   }
 
   async function handleSaveStory() {
     const story = currentStory();
     if (!story) return;
-    const saved = await api(`/stories/${story.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ story })
-    });
-    state.storyDetail.story = saved.story;
-    await api('/global-settings/triggers', {
-      method: 'PUT',
-      body: JSON.stringify({ triggerBindings: state.globalSettings.triggerBindings })
-    });
-    await reloadAll();
-    state.previewStatus = '故事已儲存。';
+    const blocker = currentRenderBlocker();
+    if (blocker) {
+      state.previewStatus = blocker;
+      state.lastActionResult = 'blocked';
+      renderPreviewOnly();
+      return;
+    }
+    setPendingAction('save');
+    state.previewStatus = '正在儲存故事...';
     render();
+    try {
+      const saved = await api(`/stories/${story.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ story })
+      });
+      state.storyDetail.story = saved.story;
+      await api('/global-settings/triggers', {
+        method: 'PUT',
+        body: JSON.stringify({ triggerBindings: state.globalSettings.triggerBindings })
+      });
+      await reloadAll();
+      clearDirty('故事已儲存。');
+      state.lastActionResult = 'saved';
+      render();
+    } catch (error) {
+      state.previewStatus = `儲存失敗：${error.message}`;
+      state.lastActionResult = 'error';
+      renderPreviewOnly();
+      throw error;
+    } finally {
+      setPendingAction('');
+    }
   }
 
   function currentDraftImport() {
@@ -348,6 +813,7 @@
       nameplateTextColor: '#FFFFFF',
       nameplateSize: 'lg'
     });
+    markDirty('已新增角色，尚未儲存。');
     renderStories();
   }
 
@@ -443,107 +909,193 @@
   async function handleValidateStory() {
     const story = currentStory();
     if (!story) return;
-    await handleSaveStory();
-    const result = await api(`/stories/${story.id}/validate/story`, {
-      method: 'POST',
-      body: JSON.stringify({})
-    });
-    const failed = result.results.filter((entry) => !entry.ok);
-    state.previewStatus = failed.length
-      ? `全故事 validate 失敗：${failed.length} 個節點有錯。`
-      : `全故事 validate 通過：${result.results.length} 個節點。`;
+    if (currentDialogueBlockers(story).length) {
+      state.previewStatus = '尚有對話卡缺少主講角色，已禁止檢查故事。';
+      state.lastActionResult = 'blocked';
+      renderPreviewOnly();
+      return;
+    }
+    setPendingAction('validate-story');
+    state.previewStatus = '正在檢查故事...';
     render();
+    try {
+      await handleSaveStory();
+      const result = await api(`/stories/${story.id}/validate/story`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      const failed = result.results.filter((entry) => !entry.ok);
+      state.previewStatus = failed.length
+        ? `全故事 validate 失敗：${failed.length} 個節點有錯。`
+        : `全故事 validate 通過：${result.results.length} 個節點。`;
+      state.lastActionResult = failed.length ? 'error' : 'saved';
+      render();
+    } catch (error) {
+      state.previewStatus = `檢查故事失敗：${error.message}`;
+      state.lastActionResult = 'error';
+      renderPreviewOnly();
+    } finally {
+      setPendingAction('');
+    }
   }
 
   async function handlePublishAssets() {
     const story = currentStory();
     if (!story) return;
-    const result = await api(`/stories/${story.id}/publish-assets`, {
-      method: 'POST'
-    });
-    const nodeMessages = (result.published.nodeResults || []).map((entry) => entry.message).join('\n');
-    state.previewStatus = result.published.ok
-      ? `成功：${result.published.successCount} / ${result.published.nodeCount}\n${nodeMessages}`
-      : `成功：${result.published.successCount} / ${result.published.nodeCount}\n失敗：${result.published.failedCount}\n${nodeMessages}`;
+    if (currentDialogueBlockers(story).length) {
+      state.previewStatus = '尚有對話卡缺少主講角色，已禁止產生部署圖片。';
+      state.lastActionResult = 'blocked';
+      renderPreviewOnly();
+      return;
+    }
+    setPendingAction('publish-assets');
+    state.previewStatus = '正在產生部署圖片...';
     renderPreviewOnly();
+    try {
+      const result = await api(`/stories/${story.id}/publish-assets`, {
+        method: 'POST'
+      });
+      const nodeMessages = (result.published.nodeResults || []).map((entry) => entry.message).join('\n');
+      state.previewStatus = result.published.ok
+        ? `成功：${result.published.successCount} / ${result.published.nodeCount}\n${nodeMessages}`
+        : `成功：${result.published.successCount} / ${result.published.nodeCount}\n失敗：${result.published.failedCount}\n${nodeMessages}`;
+      state.lastActionResult = result.published.ok ? 'saved' : 'error';
+      renderPreviewOnly();
+    } catch (error) {
+      state.previewStatus = `產生部署圖片失敗：${error.message}`;
+      state.lastActionResult = 'error';
+      renderPreviewOnly();
+    } finally {
+      setPendingAction('');
+    }
   }
 
   async function handleDeployRender() {
     const story = currentStory();
     if (!story) return;
-    await handleSaveStory();
-    const result = await api(`/stories/${story.id}/deploy`, {
-      method: 'POST',
-      body: JSON.stringify({})
-    });
-    state.previewStatus = `已發布到 Render，commit ${result.deployment.head.slice(0, 7)}。Render 會自動重新部署。`;
+    if (currentDialogueBlockers(story).length) {
+      state.previewStatus = '尚有對話卡缺少主講角色，已禁止發布到 Render。';
+      state.lastActionResult = 'blocked';
+      renderPreviewOnly();
+      return;
+    }
+    setPendingAction('deploy-render');
+    state.previewStatus = '正在發布到 Render...';
     render();
+    try {
+      await handleSaveStory();
+      const result = await api(`/stories/${story.id}/deploy`, {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      state.previewStatus = `已發布到 Render，commit ${result.deployment.head.slice(0, 7)}。Render 會自動重新部署。`;
+      state.lastActionResult = 'saved';
+      render();
+    } catch (error) {
+      state.previewStatus = `發布到 Render 失敗：${error.message}`;
+      state.lastActionResult = 'error';
+      renderPreviewOnly();
+    } finally {
+      setPendingAction('');
+    }
   }
 
   async function handleTestTrigger() {
-    const story = currentStory();
-    if (!story) return;
-    await handleSaveStory();
-    const result = await api(`/stories/${story.id}/test/trigger`, {
-      method: 'POST',
-      body: JSON.stringify({ nodeId: story.startNodeId })
-    });
-    state.previewStatus = `已送出 101 / ACT 1 測試。request id: ${result.broadcast.requestId || 'n/a'}`;
-    render();
+    state.previewStatus = '此功能已停用。請改用「模擬事件（走 runtime）」或真實 LINE webhook。';
+    renderPreviewOnly();
   }
 
   async function handleValidateNode() {
     const story = currentStory();
     const node = currentNode();
     if (!story || !node) return;
-    const result = await api(`/stories/${story.id}/validate/draft`, {
-      method: 'POST',
-      body: JSON.stringify({
-        story,
-        globalSettings: state.globalSettings,
-        nodeId: node.id
-      })
-    });
-    state.preview = result.render;
-    state.previewIssues = result.issues || [];
-    state.previewStatus = result.validation.ok
-      ? '單卡 validate 通過。'
-      : `單卡 validate 失敗：${result.validation.body}`;
+    const blocker = currentRenderBlocker();
+    if (blocker) {
+      state.previewStatus = blocker;
+      state.lastActionResult = 'blocked';
+      renderPreviewOnly();
+      return;
+    }
+    setPendingAction('validate-node');
+    state.previewStatus = '正在檢查目前卡片...';
     renderPreviewOnly();
+    try {
+      const result = await api(`/stories/${story.id}/validate/draft`, {
+        method: 'POST',
+        body: JSON.stringify({
+          story,
+          globalSettings: state.globalSettings,
+          nodeId: node.id
+        })
+      });
+      state.preview = result.render;
+      state.previewIssues = result.issues || [];
+      state.previewStatus = result.validation.ok
+        ? '單卡 validate 通過。'
+        : `單卡 validate 失敗：${result.validation.body}`;
+      state.lastActionResult = result.validation.ok ? 'saved' : 'error';
+      renderPreviewOnly();
+    } catch (error) {
+      state.previewStatus = `單卡 validate 失敗：${error.message}`;
+      state.lastActionResult = 'error';
+      renderPreviewOnly();
+    } finally {
+      setPendingAction('');
+    }
   }
 
   async function handleTestNode() {
-    const story = currentStory();
-    const node = currentNode();
-    if (!story || !node) return;
-    await handleSaveStory();
-    const result = await api(`/stories/${story.id}/test/node`, {
-      method: 'POST',
-      body: JSON.stringify({ nodeId: node.id })
-    });
-    state.previewStatus = `已送出單卡測試。request id: ${result.broadcast.requestId || 'n/a'}`;
-    render();
+    state.previewStatus = '此功能已停用。請改用「模擬事件（走 runtime）」或真實 LINE webhook。';
+    renderPreviewOnly();
   }
 
   async function handleSimulateMessage() {
     const text = dom.simulateText.value.trim();
     const sessionKey = dom.simulateSessionKey.value.trim() || 'local-preview';
-    const result = await api('/runtime/simulate', {
-      method: 'POST',
-      body: JSON.stringify({ text, sessionKey })
-    });
-    dom.simulationOutput.textContent = JSON.stringify(result.simulation, null, 2);
+    setPendingAction('simulate');
+    dom.simulationOutput.textContent = '正在執行模擬事件...';
+    render();
+    try {
+      const result = await api('/runtime/simulate', {
+        method: 'POST',
+        body: JSON.stringify({ text, sessionKey })
+      });
+      dom.simulationOutput.textContent = JSON.stringify(result.simulation, null, 2);
+      state.previewStatus = `模擬事件完成：${result.simulation.mode}`;
+      state.lastActionResult = 'saved';
+      renderPreviewOnly();
+    } catch (error) {
+      dom.simulationOutput.textContent = `模擬事件失敗：${error.message}`;
+      state.previewStatus = `模擬事件失敗：${error.message}`;
+      state.lastActionResult = 'error';
+      renderPreviewOnly();
+    } finally {
+      setPendingAction('');
+    }
   }
 
   async function handleResetSimulation() {
     const sessionKey = dom.simulateSessionKey.value.trim() || 'local-preview';
-    const result = await api('/runtime/reset', {
-      method: 'POST',
-      body: JSON.stringify({ sessionKey })
-    });
-    dom.simulateSessionKey.value = 'local-preview';
-    dom.simulateText.value = '101';
-    dom.simulationOutput.textContent = JSON.stringify(result.simulation, null, 2);
+    setPendingAction('simulate-reset');
+    try {
+      const result = await api('/runtime/reset', {
+        method: 'POST',
+        body: JSON.stringify({ sessionKey })
+      });
+      dom.simulateSessionKey.value = 'local-preview';
+      dom.simulateText.value = currentTriggerKeyword() || '';
+      dom.simulationOutput.textContent = JSON.stringify(result.simulation, null, 2);
+      state.previewStatus = '模擬 session 已重置。';
+      state.lastActionResult = 'saved';
+      renderPreviewOnly();
+    } catch (error) {
+      dom.simulationOutput.textContent = `重置 session 失敗：${error.message}`;
+      state.previewStatus = `重置 session 失敗：${error.message}`;
+      state.lastActionResult = 'error';
+      renderPreviewOnly();
+    } finally {
+      setPendingAction('');
+    }
   }
 
   async function handleAddNode(type) {
@@ -557,6 +1109,69 @@
     state.currentNodeId = result.node.id;
     resetPreviewSelection();
     render();
+    await refreshPreview();
+  }
+
+  async function handleAppendDialogueFlow() {
+    const story = currentStory();
+    if (!story) return;
+    const lines = `${dom.quickDialogueInput.value || ''}`
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    if (!lines.length) {
+      state.previewStatus = '請先輸入要批次新增的對話。';
+      renderPreviewOnly();
+      return;
+    }
+
+    const currentIndex = story.nodes.findIndex((node) => node.id === state.currentNodeId);
+    const insertIndex = currentIndex >= 0 ? currentIndex + 1 : story.nodes.length;
+    const current = currentIndex >= 0 ? story.nodes[currentIndex] : null;
+    const originalNext = current && current.type !== 'choice' ? (current.nextNodeId || '') : '';
+    const insertedNodes = [];
+    const unmatchedNames = [];
+
+    lines.forEach((line, index) => {
+      const matched = line.match(/^([^：:]+)[：:](.+)$/);
+      let node;
+      if (!matched) {
+        node = createLocalNodeTemplate('narration', story.nodes.length + insertedNodes.length + 1);
+        node.text = line;
+      } else {
+        const speakerName = matched[1].trim();
+        const text = matched[2].trim();
+        if (/^(旁白|narration)$/i.test(speakerName)) {
+          node = createLocalNodeTemplate('narration', story.nodes.length + insertedNodes.length + 1);
+          node.text = text;
+        } else {
+          node = createLocalNodeTemplate('dialogue', story.nodes.length + insertedNodes.length + 1);
+          node.text = text;
+          const speaker = findStoryCharacterByName(speakerName);
+          node.speakerCharacterId = speaker?.id || '';
+          if (!speaker) unmatchedNames.push(speakerName);
+        }
+      }
+
+      node.title = `${describeNodeType(node.type)} ${story.nodes.length + index + 1}`;
+      insertedNodes.push(node);
+    });
+
+    insertedNodes.forEach((node, index) => {
+      node.nextNodeId = insertedNodes[index + 1]?.id || originalNext;
+    });
+    if (current && current.type !== 'choice') {
+      current.nextNodeId = insertedNodes[0]?.id || current.nextNodeId;
+    }
+
+    story.nodes.splice(insertIndex, 0, ...insertedNodes);
+    state.currentNodeId = insertedNodes[0]?.id || state.currentNodeId;
+    dom.quickDialogueInput.value = '';
+    resetPreviewSelection();
+    markDirty(unmatchedNames.length
+      ? `已新增 ${insertedNodes.length} 張卡，未對上角色：${Array.from(new Set(unmatchedNames)).join('、')}。記得按「儲存故事」。`
+      : `已新增 ${insertedNodes.length} 張卡，記得按「儲存故事」。`);
+    renderStories();
     await refreshPreview();
   }
 
@@ -581,6 +1196,15 @@
       renderPreviewOnly();
       return;
     }
+    const renderBlocker = currentRenderBlocker();
+    if (renderBlocker) {
+      state.preview = null;
+      state.previewIssues = [{ level: 'error', message: renderBlocker }];
+      state.previewStatus = renderBlocker;
+      renderGraphOnly(story);
+      renderPreviewOnly();
+      return;
+    }
     const result = await api('/render', {
       method: 'POST',
       body: JSON.stringify({
@@ -591,6 +1215,10 @@
       })
     });
     state.preview = result.render;
+    if (state.storyDetail) {
+      state.storyDetail.traversal = result.traversal || state.storyDetail.traversal || null;
+    }
+    renderGraphOnly(story);
     state.previewIndex = Math.min(state.previewIndex, Math.max(0, (result.render?.models?.length || 1) - 1));
     state.previewIssues = result.issues || [];
     state.previewStatus = result.issues?.length
@@ -623,6 +1251,12 @@
     });
 
     const story = currentStory();
+    const blockers = currentDialogueBlockers(story);
+    const hasDialogueBlockers = blockers.length > 0;
+    const currentBlocker = currentRenderBlocker();
+    dom.duplicateStory.disabled = !story;
+    dom.deleteStory.disabled = !story;
+    dom.appendDialogueFlow.disabled = !story;
     if (!story) {
       dom.editorStoryTitle.textContent = '未選擇故事';
       dom.editorStoryMeta.textContent = '';
@@ -634,11 +1268,54 @@
     }
 
     const triggerBinding = currentTriggerBinding();
+    const triggerKeyword = currentTriggerKeyword();
+    const blockerReason = firstDialogueBlocker(story);
+    const dirtyLabel = state.pendingAction
+      ? `處理中：${state.pendingAction}`
+      : state.isDirty
+        ? '尚未儲存'
+        : state.lastActionResult === 'saved'
+          ? '已儲存'
+          : state.lastActionResult === 'error'
+            ? '上一個操作失敗'
+            : '同步中';
     dom.editorStoryTitle.textContent = story.title;
-    dom.editorStoryMeta.textContent = `start: ${story.startNodeId || '未設定'} / trigger: ${triggerBinding?.keyword || '未設定'}`;
+    dom.editorStoryMeta.textContent = `start: ${story.startNodeId || '未設定'} / trigger: ${triggerBinding?.keyword || '未設定'} / 狀態: ${dirtyLabel}`;
     dom.storyTitleInput.value = story.title || '';
     dom.storyDescriptionInput.value = story.description || '';
     dom.storyTriggerInput.value = triggerBinding?.keyword || '';
+    dom.saveStory.disabled = Boolean(currentBlocker);
+    dom.saveStoryMeta.disabled = Boolean(currentBlocker);
+    dom.publishAssets.disabled = hasDialogueBlockers;
+    dom.deployRender.disabled = hasDialogueBlockers;
+    dom.validateNode.disabled = Boolean(currentBlocker);
+    dom.validateStory.disabled = hasDialogueBlockers || state.pendingAction === 'validate-story';
+    dom.simulateMessage.disabled = state.pendingAction === 'simulate';
+    dom.simulateReset.disabled = state.pendingAction === 'simulate-reset';
+    dom.saveStory.textContent = state.pendingAction === 'save' ? '儲存中...' : '儲存故事';
+    dom.saveStoryMeta.textContent = state.pendingAction === 'save' ? '儲存中...' : '儲存故事';
+    dom.publishAssets.textContent = state.pendingAction === 'publish-assets' ? '產圖中...' : '產生部署圖片';
+    dom.deployRender.textContent = state.pendingAction === 'deploy-render' ? '發布中...' : '發布到 Render';
+    dom.validateStory.textContent = state.pendingAction === 'validate-story' ? '檢查中...' : '檢查故事';
+    dom.validateNode.textContent = state.pendingAction === 'validate-node' ? '檢查中...' : 'Validate 單卡';
+    dom.simulateMessage.textContent = state.pendingAction === 'simulate' ? '執行中...' : '送出文字事件';
+    dom.simulateReset.textContent = state.pendingAction === 'simulate-reset' ? '重置中...' : '重置 session';
+    dom.saveStory.title = currentBlocker || '';
+    dom.saveStoryMeta.title = currentBlocker || '';
+    dom.publishAssets.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
+    dom.deployRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
+    dom.validateStory.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
+    dom.validateNode.title = currentBlocker || '';
+    dom.testTrigger.textContent = '已停用：改用模擬事件';
+    dom.testTrigger.disabled = true;
+    dom.testNode.textContent = '已停用：改用模擬事件';
+    dom.testNode.disabled = true;
+    dom.testTrigger.title = '此功能已停用，請改用「模擬事件（走 runtime）」或真實 LINE webhook。';
+    dom.testNode.title = '此功能已停用，請改用「模擬事件（走 runtime）」或真實 LINE webhook。';
+    if (!dom.simulateText.value || dom.simulateText.value === '101') {
+      dom.simulateText.value = triggerKeyword || '';
+    }
+    dom.simulateText.placeholder = triggerKeyword ? `例如：${triggerKeyword}` : '請先設定 trigger keyword';
     dom.storyStartNode.innerHTML = story.nodes.map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title)} (${escapeHtml(node.id)})</option>`).join('');
     dom.storyStartNode.value = story.startNodeId || story.nodes[0]?.id || '';
     dom.scriptImportText.value = story.draftImport?.sourceText || '';
@@ -650,29 +1327,7 @@
       ? state.currentDraftNodeId
       : (story.draftImport?.nodes?.[0]?.id || '');
 
-    dom.nodeGraph.innerHTML = renderNodeGraph(story);
-    dom.nodeGraph.querySelectorAll('.graph-node[data-node-id]').forEach((card) => {
-      card.addEventListener('click', () => {
-        state.currentNodeId = card.dataset.nodeId;
-        resetPreviewSelection();
-        renderStories();
-        refreshPreview().catch(console.error);
-      });
-    });
-    dom.nodeGraph.querySelectorAll('[data-node-action]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const action = button.dataset.nodeAction;
-        const nodeId = button.dataset.nodeId;
-        if (action === 'move-prev') {
-          moveStoryNode(nodeId, -1);
-        } else if (action === 'move-next') {
-          moveStoryNode(nodeId, 1);
-        } else if (action === 'delete') {
-          deleteStoryNode(nodeId);
-        }
-      });
-    });
+    renderGraphOnly(story);
     renderStoryCharacters(story);
     renderDraftImport(story);
     renderDraftEditor(story);
@@ -831,15 +1486,17 @@
       actions.className = 'character-actions';
       const save = document.createElement('button');
       save.className = 'button good';
-      save.textContent = '儲存角色';
+      save.textContent = '儲存故事';
       save.addEventListener('click', handleSaveStory);
       actions.appendChild(save);
       const remove = document.createElement('button');
       remove.className = 'button bad';
       remove.textContent = '刪除角色';
       remove.addEventListener('click', () => {
+        clearDeletedCharacterReferences(story, character.id);
         story.characters.splice(sourceIndex, 1);
         renderStories();
+        refreshPreview().catch(console.error);
       });
       actions.appendChild(remove);
       card.appendChild(actions);
@@ -1080,6 +1737,7 @@
         });
         state.storyDetail.story = result.story;
         renderStories();
+        await refreshPreview();
       });
       card.addEventListener('click', (event) => {
         if (event.target.closest('button')) return;
@@ -1215,6 +1873,7 @@
         });
         state.storyDetail.story = result.story;
         renderStories();
+        await refreshPreview();
       }]
     ].forEach(([label, handler], index) => {
       const button = document.createElement('button');
@@ -1236,29 +1895,48 @@
   }
 
   function renderNodeGraph(story) {
-    const nodes = story?.nodes || [];
-    if (!nodes.length) {
+    const rawNodes = story?.nodes || [];
+    if (!rawNodes.length) {
       return '<div class="status-box">尚未建立節點。</div>';
     }
 
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
-    const placed = new Map();
-    nodes.forEach((node, index) => {
-      const column = index;
-      placed.set(node.id, {
-        x: 40 + column * 300,
-        y: 86
-      });
+    const graph = buildGraphEntries(story);
+    const placed = buildGraphPlacements(story, graph.entries);
+    const runtimeById = new Map(graph.entries.map((entry) => [entry.graphId || entry.id, entry]));
+    const virtualBySource = new Map();
+    graph.entries.filter((entry) => entry.virtual).forEach((entry) => {
+      const key = entry.sourceNodeId;
+      const bucket = virtualBySource.get(key) || [];
+      bucket.push(entry);
+      virtualBySource.set(key, bucket);
     });
 
     const deadEnds = [];
     const edges = [];
-    nodes.forEach((node) => {
+    rawNodes.forEach((node) => {
       const fromPos = placed.get(node.id);
       if (!fromPos) return;
+      const virtuals = virtualBySource.get(node.id) || [];
 
-      if (node.nextNodeId && placed.has(node.nextNodeId)) {
-        edges.push({ from: node.id, to: node.nextNodeId, style: 'solid', label: '主線' });
+      if (node.type !== 'choice') {
+        const transition = virtuals[0] || null;
+        if (transition) {
+          edges.push({ from: node.id, to: transition.graphId || transition.id, style: 'solid', label: '過場' });
+          if (transition.nextNodeId && placed.has(transition.nextNodeId)) {
+            edges.push({ from: transition.graphId || transition.id, to: transition.nextNodeId, style: 'solid', label: '續接' });
+          }
+        } else if (node.nextNodeId && placed.has(node.nextNodeId)) {
+          edges.push({ from: node.id, to: node.nextNodeId, style: 'solid', label: '主線' });
+        } else if (!node.nextNodeId) {
+          deadEnds.push({
+            id: `${node.id}-dead`,
+            title: '未設定下一幕',
+            type: 'dead-end',
+            x: fromPos.x + 210,
+            y: fromPos.y + 30
+          });
+          edges.push({ from: node.id, to: `${node.id}-dead`, style: 'dashed', label: 'dead' });
+        }
       }
 
       if (node.type === 'choice') {
@@ -1267,12 +1945,20 @@
           { key: 'A', target: node.optionA?.nextNodeId || '', label: node.optionA?.label || 'A' },
           { key: 'B', target: node.optionB?.nextNodeId || '', label: node.optionB?.label || 'B' }
         ].forEach((option, optionIndex) => {
+          const virtual = virtuals.find((entry) => entry.branch === option.key) || null;
+          if (virtual) {
+            edges.push({ from: node.id, to: virtual.graphId || virtual.id, style: option.target === primary ? 'solid' : 'dashed', label: option.key });
+            if (virtual.nextNodeId && placed.has(virtual.nextNodeId)) {
+              edges.push({ from: virtual.graphId || virtual.id, to: virtual.nextNodeId, style: option.target === primary ? 'solid' : 'dashed', label: `${option.key} 續接` });
+            }
+            return;
+          }
           if (!option.target) {
             const deadId = `${node.id}-${option.key}-dead`;
-        const deadPos = {
-          x: fromPos.x + 190,
-          y: 278 + optionIndex * 110
-        };
+            const deadPos = {
+              x: fromPos.x + 190,
+              y: fromPos.y + 146 + optionIndex * 110
+            };
             deadEnds.push({
               id: deadId,
               title: `Dead End ${option.key}`,
@@ -1305,9 +1991,16 @@
     );
 
     const allPositions = new Map();
-    nodes.forEach((node) => {
-      const pos = placed.get(node.id);
-      if (pos) allPositions.set(node.id, { x: pos.x, y: pos.y, width: cardWidth, height: cardHeight });
+    graph.entries.forEach((entry) => {
+      const pos = placed.get(entry.graphId || entry.id);
+      if (pos) {
+        allPositions.set(entry.graphId || entry.id, {
+          x: pos.x,
+          y: pos.y,
+          width: entry.virtual ? 140 : cardWidth,
+          height: entry.virtual ? 88 : cardHeight
+        });
+      }
     });
     deadEnds.forEach((entry) => {
       allPositions.set(entry.id, { x: entry.x, y: entry.y, width: 140, height: 72 });
@@ -1349,10 +2042,14 @@
           }).join('')}
         </svg>
         <div class="graph-node-layer">
-          ${nodes.map((node, index) => {
-            const pos = placed.get(node.id);
-            return renderNodeCard(node, pos, index);
-          }).join('')}
+          ${(() => {
+            let actualIndex = 0;
+            return graph.entries.map((entry) => {
+              const nodeIndex = entry.virtual ? actualIndex : ++actualIndex;
+              const pos = placed.get(entry.graphId || entry.id);
+              return renderNodeCard(entry, pos, nodeIndex, graph);
+            }).join('');
+          })()}
           ${deadEnds.map((node) => `
             <article class="graph-node graph-placed" style="left:${node.x}px;top:${node.y}px;width:140px;min-width:140px;background:#fff7f1;border-style:dashed;border-color:#d8bda3;">
               <div class="node-title">${escapeHtml(node.title)}</div>
@@ -1364,20 +2061,61 @@
     `;
   }
 
-  function renderNodeCard(node, position = { x: 0, y: 0 }, index = 0) {
+  function renderNodeCard(node, position = { x: 0, y: 0 }, index = 0, graph = {}) {
+    const isVirtual = Boolean(node.virtual);
     const links = [];
-    if (node.nextNodeId) links.push(`→ ${node.nextNodeId}`);
-    if (node.optionA?.nextNodeId) links.push(`A → ${node.optionA.nextNodeId}`);
-    if (node.optionB?.nextNodeId) links.push(`B → ${node.optionB.nextNodeId}`);
+    if (!isVirtual && node.nextNodeId) links.push(`→ ${node.nextNodeId}`);
+    if (!isVirtual && node.optionA?.nextNodeId) links.push(`A → ${node.optionA.nextNodeId}`);
+    if (!isVirtual && node.optionB?.nextNodeId) links.push(`B → ${node.optionB.nextNodeId}`);
+    if (isVirtual && node.nextNodeId) links.push(`→ ${node.nextNodeId}`);
+    const summary = isVirtual
+      ? (node.summary || node.text || '尚未填寫過場文案')
+      : node.type === 'choice'
+        ? (node.prompt || '在這裡輸入選項提問。')
+        : (node.text || '尚未填寫內容');
+    const selected = isVirtual
+      ? state.currentVirtualTransitionId === (node.graphId || node.id)
+      : node.id === state.currentNodeId && !state.currentVirtualTransitionId;
+    const classes = [
+      'graph-node',
+      'graph-placed',
+      'node-card',
+      `node-type-${escapeHtml(node.type)}`,
+      selected ? 'active selected' : '',
+      isVirtual ? 'virtual-transition' : '',
+      node.unreachable ? 'unreachable' : '',
+      !isVirtual && graph.deadEndIds?.has?.(node.id) ? 'dangling' : ''
+    ].filter(Boolean).join(' ');
+    if (isVirtual) {
+      return `
+        <article class="${classes}" data-virtual-transition-id="${node.graphId || node.id}" data-node-id="${node.sourceNodeId}" style="left:${position.x}px;top:${position.y}px;width:140px;min-width:140px;background:#fff7f1;border-style:dashed;border-color:#d8bda3;">
+          <div class="row space-between">
+            <div class="node-title">過場</div>
+            <span class="pill">virtual</span>
+          </div>
+          <div class="subtle">${escapeHtml(node.branch ? `${node.branch} 分支` : `來自 ${node.sourceNodeId}`)}</div>
+          <div class="graph-node-summary">${escapeHtml(summary.slice(0, 20))}</div>
+          <div class="graph-links">${links.length ? links.map((link) => `<span class="pill">${escapeHtml(link)}</span>`).join('') : '<span class="subtle">尚未連線</span>'}</div>
+        </article>
+      `;
+    }
     return `
-      <article class="graph-node graph-placed node-card ${node.id === state.currentNodeId ? 'active selected' : ''}" data-node-id="${node.id}" style="left:${position.x}px;top:${position.y}px;">
+      <article class="${classes}" data-node-id="${node.id}" style="left:${position.x}px;top:${position.y}px;">
         <div class="row space-between">
           <div class="node-title">ACT ${index + 1}</div>
           <span class="pill">${escapeHtml(node.type)}</span>
         </div>
-        <div class="subtle">num.${index + 1}</div>
+        <div class="subtle">${escapeHtml(node.unreachable ? 'unreachable' : `num.${index + 1}`)}</div>
+        <div class="graph-node-summary">${escapeHtml(summary.slice(0, 54))}</div>
         <div class="graph-links">${links.length ? links.map((link) => `<span class="pill">${escapeHtml(link)}</span>`).join('') : '<span class="subtle">尚未連線</span>'}</div>
         <div class="graph-node-actions">
+          <button class="graph-node-action" data-node-action="insert-dialogue" data-node-id="${node.id}">＋對話</button>
+          <button class="graph-node-action" data-node-action="insert-narration" data-node-id="${node.id}">＋旁白</button>
+          <button class="graph-node-action" data-node-action="insert-choice" data-node-id="${node.id}">＋選項</button>
+          <button class="graph-node-action" data-node-action="insert-transition" data-node-id="${node.id}">＋過場</button>
+        </div>
+        <div class="graph-node-actions">
+          <button class="graph-node-action" data-node-action="duplicate" data-node-id="${node.id}">複製</button>
           <button class="graph-node-action" data-node-action="move-prev" data-node-id="${node.id}">前移</button>
           <button class="graph-node-action" data-node-action="move-next" data-node-id="${node.id}">後移</button>
           <button class="graph-node-action delete" data-node-action="delete" data-node-id="${node.id}">刪除</button>
@@ -1404,24 +2142,40 @@
 
     const header = document.createElement('div');
     header.className = 'editor-selection';
+    const selectionLabel = context.targetType === 'page'
+      ? `正在編輯第 ${context.pageIndex + 1} 頁`
+      : context.targetType === 'choice'
+        ? '正在編輯選項卡'
+        : '正在編輯節點主卡';
     header.innerHTML = `
       <div>
         <div class="editor-selection-title">${escapeHtml(context.targetType === 'page' ? (context.page?.title || '目前頁面') : node.title)}</div>
-        <div class="editor-selection-meta">
-          ${escapeHtml(context.targetType === 'page'
-            ? `正在編輯第 ${context.pageIndex + 1} 張卡`
-            : context.targetType === 'choice'
-              ? '正在編輯選項卡'
-              : '正在編輯節點主卡')}
+        <div class="editor-selection-meta">${escapeHtml(selectionLabel)}</div>
+        <div class="graph-links" style="margin-top:8px;">
+          <span class="pill warn">${escapeHtml(context.targetType === 'page' ? 'Page' : context.targetType === 'choice' ? 'Choice' : 'Node')}</span>
+          <span class="pill">${escapeHtml(node.id)}</span>
+          ${state.currentVirtualTransitionId ? '<span class="pill bad">正在查看過場映射</span>' : ''}
         </div>
       </div>
     `;
     const saveButton = document.createElement('button');
     saveButton.className = 'button';
-    saveButton.textContent = context.targetType === 'page' ? '儲存這一張卡' : '儲存目前卡片';
+    saveButton.textContent = '儲存故事';
     saveButton.addEventListener('click', handleSaveStory);
+    const renderBlocker = currentRenderBlocker();
+    saveButton.disabled = Boolean(renderBlocker);
+    saveButton.title = renderBlocker || '';
     header.appendChild(saveButton);
     wrapper.appendChild(header);
+
+    const virtualTransition = currentVirtualTransition();
+    if (virtualTransition && virtualTransition.sourceNodeId === node.id) {
+      wrapper.appendChild(renderVirtualTransitionInspector(virtualTransition, story));
+    }
+
+    if (Array.isArray(node.pages) && node.pages.length) {
+      wrapper.appendChild(renderPageManager(node, context));
+    }
 
     if (context.targetType === 'page' && context.page) {
       wrapper.appendChild(renderSelectedPageEditor(node, context.page, context.pageIndex));
@@ -1434,7 +2188,38 @@
     dom.nodeEditorForm.appendChild(wrapper);
   }
 
+  function renderVirtualTransitionInspector(entry, story) {
+    const section = document.createElement('section');
+    section.className = 'panel';
+    section.style.padding = '14px';
+    section.appendChild(sectionHeading('目前選到的過場映射（唯讀）'));
+    const grid = document.createElement('div');
+    grid.className = 'field-grid';
+    grid.append(
+      createField('來源', input(entry.branch ? `${entry.sourceNodeId} / ${entry.branch}` : entry.sourceNodeId, () => {})),
+      createField('下一節點', input(entry.nextNodeId || '未設定', () => {})),
+      createField('過場內容', textarea(entry.text || '', () => {}), 'single')
+    );
+    Array.from(grid.querySelectorAll('input, textarea')).forEach((element) => {
+      element.readOnly = true;
+      element.disabled = true;
+    });
+    section.appendChild(grid);
+    const tip = document.createElement('div');
+    tip.className = 'subtle';
+    tip.textContent = entry.branch
+      ? `這不是獨立 block。它是由下方「選項 ${entry.branch}」的選後過場文案映射出來的，請在下方欄位修改後再按「儲存故事」。`
+      : '這不是獨立 block。它是由下方「下一幕過場文案」映射出來的，請在下方欄位修改後再按「儲存故事」。';
+    section.appendChild(tip);
+    return section;
+  }
+
   function renderFieldGrid(node, story) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    if (node.type === 'dialogue' && !node.speakerCharacterId) {
+      wrap.appendChild(createBlockingNotice('這張對話卡尚未設定主講角色，已禁止預覽與儲存。'));
+    }
     const container = document.createElement('div');
     container.className = 'field-grid';
     container.append(
@@ -1445,22 +2230,118 @@
         ['choice', '選項卡'],
         ['carousel', '多頁訊息']
       ], node.type, (value) => updateNodeType(node, value))),
-      createField('圖片', imageInput(node.imagePath, (value) => updateNodeField('imagePath', value))),
-      createField('大圖透明度', decimalInput(node.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updateNodeField('heroImageOpacity', value))),
-      createField('大圖縮放', rangeInput(node.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updateNodeField('heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
       createField('下一節點', select(nextNodeOptions(story), node.nextNodeId || '', (value) => updateNodeField('nextNodeId', value))),
       createField('中文字體', select(fontOptions(), node.previewFont || 'default', (value) => updateNodeField('previewFont', value))),
       createField('LINE 字級', select(textSizeOptions(), node.lineTextSize || 'lg', (value) => updateNodeField('lineTextSize', value))),
       createField('文字顏色', colorInput(node.lineTextColor || '#2D241B', (value) => updateNodeField('lineTextColor', value))),
-      createField('姓名牌大小', nameplateSizeSlider(node.nameplateSize || 'lg', (value) => updateNodeField('nameplateSize', value))),
-      createField('主講角色', select(characterOptions(true), node.speakerCharacterId || '', (value) => updateNodeField('speakerCharacterId', value))),
-      createField('陪襯角色', select(characterOptions(true), node.companionCharacterId || '', (value) => updateNodeField('companionCharacterId', value))),
       createField('繼續按鈕文字', input(node.continueLabel || '下一步', (value) => updateNodeField('continueLabel', value))),
       createField('圖上位置 X', numberInput(node.position?.x || 0, (value) => updateNodePosition('x', value))),
       createField('圖上位置 Y', numberInput(node.position?.y || 0, (value) => updateNodePosition('y', value)))
     );
+    if (node.type !== 'transition') {
+      container.append(
+        createField('圖片', imageInput(node.imagePath, (value) => updateNodeField('imagePath', value))),
+        createField('大圖透明度', decimalInput(node.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updateNodeField('heroImageOpacity', value))),
+        createField('大圖縮放', rangeInput(node.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updateNodeField('heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`))
+      );
+    }
+    if (node.type === 'dialogue' || node.type === 'choice' || node.type === 'carousel') {
+      container.append(
+        createField('姓名牌大小', nameplateSizeSlider(node.nameplateSize || 'lg', (value) => updateNodeField('nameplateSize', value))),
+        createField('主講角色', select(characterOptions(true), node.speakerCharacterId || '', (value) => updateNodeField('speakerCharacterId', value))),
+        createField('陪襯角色', select(characterOptions(true), node.companionCharacterId || '', (value) => updateNodeField('companionCharacterId', value)))
+      );
+    }
     container.appendChild(createField('文字', textarea(node.text || '', (value) => updateNodeField('text', value)), 'single'));
-    return container;
+    if (node.type !== 'choice') {
+      container.appendChild(createField('下一幕過場文案', textarea(node.transitionText || '', (value) => updateNodeField('transitionText', value)), 'single'));
+    }
+    wrap.appendChild(container);
+    return wrap;
+  }
+
+  function renderPageManager(node, context) {
+    const section = document.createElement('section');
+    section.className = 'panel';
+    section.style.padding = '14px';
+
+    const header = document.createElement('div');
+    header.className = 'row space-between';
+    header.innerHTML = `
+      <div>
+        <h3 style="margin:0;">多頁管理</h3>
+        <div class="subtle">共 ${node.pages.length} 頁${node.type === 'choice' ? '，最後一張為選項卡' : ''}</div>
+      </div>
+    `;
+
+    const actions = document.createElement('div');
+    actions.className = 'actions';
+
+    const addButton = document.createElement('button');
+    addButton.className = 'button secondary';
+    addButton.textContent = '新增下一頁';
+    addButton.title = '在目前頁面後方插入一頁。';
+    addButton.addEventListener('click', () => insertNodePage(node, context.pageIndex));
+    actions.appendChild(addButton);
+
+    if (context.pageIndex >= 0) {
+      const movePrevButton = document.createElement('button');
+      movePrevButton.className = 'button ghost';
+      movePrevButton.textContent = '上移';
+      movePrevButton.disabled = context.pageIndex === 0;
+      movePrevButton.title = context.pageIndex === 0 ? '已經是第一頁，無法再往前。' : '把目前頁面往前移一格。';
+      movePrevButton.addEventListener('click', () => moveNodePage(node, context.pageIndex, -1));
+      actions.appendChild(movePrevButton);
+
+      const moveNextButton = document.createElement('button');
+      moveNextButton.className = 'button ghost';
+      moveNextButton.textContent = '下移';
+      moveNextButton.disabled = context.pageIndex >= node.pages.length - 1;
+      moveNextButton.title = context.pageIndex >= node.pages.length - 1 ? '已經是最後一頁，無法再往後。' : '把目前頁面往後移一格。';
+      moveNextButton.addEventListener('click', () => moveNodePage(node, context.pageIndex, 1));
+      actions.appendChild(moveNextButton);
+
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'button ghost';
+      deleteButton.textContent = '刪除這頁';
+      deleteButton.title = '刪除目前頁面。';
+      deleteButton.addEventListener('click', () => deleteNodePage(node, context.pageIndex));
+      actions.appendChild(deleteButton);
+    }
+
+    header.appendChild(actions);
+    section.appendChild(header);
+
+    const pager = document.createElement('div');
+    pager.className = 'actions';
+    pager.style.flexWrap = 'wrap';
+    pager.style.marginTop = '14px';
+    node.pages.forEach((page, index) => {
+      const button = document.createElement('button');
+      button.className = `button ${context.pageIndex === index ? 'good' : 'ghost'}`;
+      button.textContent = page.title || `第 ${index + 1} 頁`;
+      button.addEventListener('click', () => {
+        state.previewIndex = index;
+        renderPreviewOnly();
+        renderNodeEditor();
+      });
+      pager.appendChild(button);
+    });
+
+    if (node.type === 'choice') {
+      const choiceButton = document.createElement('button');
+      choiceButton.className = `button ${context.targetType === 'choice' ? 'good' : 'ghost'}`;
+      choiceButton.textContent = '選項卡';
+      choiceButton.addEventListener('click', () => {
+        state.previewIndex = node.pages.length;
+        renderPreviewOnly();
+        renderNodeEditor();
+      });
+      pager.appendChild(choiceButton);
+    }
+
+    section.appendChild(pager);
+    return section;
   }
 
   function renderSelectedPageEditor(node, page, pageIndex) {
@@ -1475,10 +2356,17 @@
     heading.innerHTML = `<h3>${escapeHtml(page.title || `第 ${pageIndex + 1} 頁`)}</h3>`;
     const saveButton = document.createElement('button');
     saveButton.className = 'button good';
-    saveButton.textContent = '儲存這一頁';
+    saveButton.textContent = '儲存故事';
     saveButton.addEventListener('click', handleSaveStory);
+    const renderBlocker = currentRenderBlocker();
+    saveButton.disabled = Boolean(renderBlocker);
+    saveButton.title = renderBlocker || '';
     heading.appendChild(saveButton);
     section.appendChild(heading);
+
+    if (page.cardType === 'dialogue' && !page.speakerCharacterId) {
+      section.appendChild(createBlockingNotice('這張對話頁尚未設定主講角色，已禁止預覽與儲存。'));
+    }
 
     const grid = document.createElement('div');
     grid.className = 'field-grid';
@@ -1517,8 +2405,11 @@
     promptHeader.appendChild(sectionHeading('選項提問'));
     const saveButton = document.createElement('button');
     saveButton.className = 'button good';
-    saveButton.textContent = '儲存這張選項卡';
+    saveButton.textContent = '儲存故事';
     saveButton.addEventListener('click', handleSaveStory);
+    const renderBlocker = currentRenderBlocker();
+    saveButton.disabled = Boolean(renderBlocker);
+    saveButton.title = renderBlocker || '';
     promptHeader.appendChild(saveButton);
     promptPanel.appendChild(promptHeader);
     const promptGrid = document.createElement('div');
@@ -1539,7 +2430,7 @@
     optionAGrid.append(
       createField('文案', input(node.optionA?.label || '', (value) => updateChoiceField('optionA', 'label', value))),
       createField('下一節點', select(nextNodeOptions(story), node.optionA?.nextNodeId || '', (value) => updateChoiceField('optionA', 'nextNodeId', value))),
-      createField('回饋', textarea(node.optionA?.feedback || '', (value) => updateChoiceField('optionA', 'feedback', value)))
+      createField('選後過場文案', textarea(node.optionA?.feedback || '', (value) => updateChoiceField('optionA', 'feedback', value)))
     );
     optionAPanel.appendChild(optionAGrid);
 
@@ -1552,7 +2443,7 @@
     optionBGrid.append(
       createField('文案', input(node.optionB?.label || '', (value) => updateChoiceField('optionB', 'label', value))),
       createField('下一節點', select(nextNodeOptions(story), node.optionB?.nextNodeId || '', (value) => updateChoiceField('optionB', 'nextNodeId', value))),
-      createField('回饋', textarea(node.optionB?.feedback || '', (value) => updateChoiceField('optionB', 'feedback', value)))
+      createField('選後過場文案', textarea(node.optionB?.feedback || '', (value) => updateChoiceField('optionB', 'feedback', value)))
     );
     optionBPanel.appendChild(optionBGrid);
 
@@ -1564,23 +2455,39 @@
   function renderPreviewOnly() {
     dom.previewTabs.forEach((button) => button.classList.toggle('active', button.dataset.previewPanel === state.previewPanel));
     Object.entries(dom.previewPanels).forEach(([key, panel]) => panel.classList.toggle('active', key === state.previewPanel));
+    dom.previewStatus.className = previewStatusClassName();
     dom.previewStatus.textContent = [state.previewStatus, ...state.previewIssues.map((issue) => `• ${issue.message}`)].join('\n');
     dom.scenePreview.innerHTML = '';
     dom.payloadPreview.textContent = state.preview ? JSON.stringify(state.preview.payload, null, 2) : '{}';
     const total = state.preview?.models?.length || 0;
-    dom.previewCounter.textContent = total ? `共 ${total} 張` : '0 張';
+    const transitionCount = state.preview?.transitionPreviews?.length || 0;
+    dom.previewCounter.textContent = total || transitionCount ? `共 ${total} 張卡 / ${transitionCount} 段過場` : '0 張';
     const current = currentPreviewModel();
     dom.previewOutputMeta.textContent = current?.renderedImagePath
       ? `目前實際輸出圖: ${current.renderedImagePath}`
       : '目前尚未產生輸出圖。';
-    if (!state.preview || !total) return;
+    if (!state.preview || (!total && !transitionCount)) {
+      if (state.previewIssues.length) {
+        dom.scenePreview.appendChild(renderPreviewNoticeCard(state.previewIssues[0]?.message || state.previewStatus));
+      }
+      return;
+    }
     state.preview.models.forEach((model, index) => {
       dom.scenePreview.appendChild(renderPreviewModel(model, index));
+    });
+    (state.preview.transitionPreviews || []).forEach((entry) => {
+      dom.scenePreview.appendChild(renderTransitionPreview(entry));
     });
   }
 
   function renderPreviewModel(model, index) {
     return renderRenderedImagePreview(model, index);
+  }
+
+  function withCacheBust(url, token = '') {
+    if (!url) return '';
+    if (!token) return url;
+    return `${url}${url.includes('?') ? '&' : '?'}v=${encodeURIComponent(token)}`;
   }
 
   function renderRenderedImagePreview(model, index = 0) {
@@ -1592,20 +2499,81 @@
     meta.innerHTML = `
       <div class="preview-meta-main">
         <strong>${escapeHtml(model.title || '未命名卡片')}</strong>
-        <div class="subtle">${escapeHtml(model.kind === 'dialogue' ? '對話卡' : model.kind === 'narration' ? '旁白卡' : '選項卡')}</div>
+        <div class="subtle">${escapeHtml(
+          model.kind === 'dialogue'
+            ? '對話卡'
+            : model.kind === 'narration'
+              ? '旁白卡'
+              : model.kind === 'transition'
+                ? '轉場卡'
+                : '選項卡'
+        )}</div>
       </div>
       <span class="pill">Renderer</span>
     `;
     const article = document.createElement('article');
     article.className = 'rpg-scene';
     article.style.height = `${model.layout.totalHeight}px`;
-    article.innerHTML = `<img class="hero" src="${escapeHtml(model.previewImageUrl || model.renderedImageUrl || '')}" alt="${escapeHtml(model.title || '')}" style="width:100%;height:100%;display:block;object-fit:cover;">`;
+    const previewSrc = withCacheBust(model.previewImageUrl || model.renderedImageUrl || '', model.imageHash || '');
+    article.innerHTML = `<img class="hero" src="${escapeHtml(previewSrc)}" alt="${escapeHtml(model.title || '')}" style="width:100%;height:100%;display:block;object-fit:cover;">`;
     wrapper.append(meta, article);
     wrapper.addEventListener('click', () => {
+      state.currentVirtualTransitionId = '';
       state.previewIndex = index;
       renderPreviewOnly();
       renderNodeEditor();
     });
+    return wrapper;
+  }
+
+  function renderTransitionPreview(entry) {
+    const wrapper = document.createElement('div');
+    wrapper.className = `preview-card transition-preview ${state.currentVirtualTransitionId === entry.id ? 'selected' : ''}`;
+    const meta = document.createElement('div');
+    meta.className = 'preview-meta';
+    meta.innerHTML = `
+      <div class="preview-meta-main">
+        <strong>${escapeHtml(entry.title || '過場')}</strong>
+        <div class="subtle">${escapeHtml(entry.optionLabel || '轉場文案')}</div>
+      </div>
+      <span class="pill">Transition</span>
+    `;
+    const article = document.createElement('article');
+    article.className = 'story-card';
+    article.style.margin = '0';
+    article.innerHTML = `
+      <div class="subtle" style="margin-bottom:8px;">這段會在流程中額外送出</div>
+      <div style="font-size:20px;font-weight:800;line-height:1.55;">${escapeHtml(entry.text || '')}</div>
+    `;
+    wrapper.append(meta, article);
+    wrapper.addEventListener('click', () => {
+      state.currentVirtualTransitionId = entry.id || '';
+      state.currentNodeId = entry.sourceNodeId || state.currentNodeId;
+      renderPreviewOnly();
+      renderNodeEditor();
+    });
+    return wrapper;
+  }
+
+  function renderPreviewNoticeCard(message) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'preview-card preview-notice-card selected';
+    const meta = document.createElement('div');
+    meta.className = 'preview-meta';
+    meta.innerHTML = `
+      <div class="preview-meta-main">
+        <strong>預覽已被阻止</strong>
+        <div class="subtle">請先修正目前卡片的 blocker</div>
+      </div>
+      <span class="pill bad">Blocked</span>
+    `;
+    const article = document.createElement('article');
+    article.className = 'story-card';
+    article.style.margin = '0';
+    article.style.borderColor = '#E6BBBB';
+    article.style.background = '#FFF4F4';
+    article.innerHTML = `<div style="font-size:18px;font-weight:800;line-height:1.6;color:#9E4646;">${escapeHtml(message || '目前無法產生預覽。')}</div>`;
+    wrapper.append(meta, article);
     return wrapper;
   }
 
@@ -1650,6 +2618,16 @@
     heading.textContent = text;
     heading.style.margin = '0 0 12px';
     return heading;
+  }
+
+  function createBlockingNotice(message) {
+    const warning = document.createElement('div');
+    warning.className = 'status-box';
+    warning.style.background = '#FBE3E3';
+    warning.style.border = '1px solid #E6BBBB';
+    warning.style.color = '#9E4646';
+    warning.textContent = message;
+    return warning;
   }
 
   function input(value, onInput) {
@@ -1854,6 +2832,7 @@
   function describeNodeType(type) {
     if (type === 'dialogue') return '對話卡';
     if (type === 'narration') return '旁白卡';
+    if (type === 'transition') return '轉場卡';
     if (type === 'choice') return '選項卡';
     if (type === 'carousel') return '多頁訊息';
     return type || '未分類';
@@ -1863,14 +2842,113 @@
     const node = currentNode();
     if (!node) return;
     node[field] = value;
+    if (field === 'speakerCharacterId' && node.companionCharacterId === value) {
+      node.companionCharacterId = '';
+    }
+    if (field === 'companionCharacterId' && node.speakerCharacterId === value) {
+      node.companionCharacterId = '';
+    }
+    markDirty('目前節點已修改，尚未儲存。');
     schedulePreview();
+  }
+
+  function ensureDialogueRoleDefaults(target) {
+    if (!target) return;
+    if (!target.speakerCharacterId) {
+      target.speakerCharacterId = defaultSpeakerId();
+    }
+    if (target.speakerCharacterId && target.speakerCharacterId === target.companionCharacterId) {
+      target.companionCharacterId = '';
+    }
+  }
+
+  function clearDialogueRoleFields(target) {
+    if (!target) return;
+    target.speakerCharacterId = '';
+    target.companionCharacterId = '';
   }
 
   function updateNodePosition(axis, value) {
     const node = currentNode();
     if (!node) return;
     node.position[axis] = value;
+    markDirty('Block 位置已修改，尚未儲存。');
     schedulePreview();
+  }
+
+  function insertNodeAfter(nodeId, type = 'dialogue') {
+    const story = currentStory();
+    if (!story) return;
+    const index = story.nodes.findIndex((node) => node.id === nodeId);
+    if (index < 0) return;
+    const source = story.nodes[index];
+    const inserted = createLocalNodeTemplate(type, story.nodes.length + 1);
+    inserted.title = type === 'transition'
+      ? `${source.title || 'Scene'} 轉場`
+      : `${source.title || 'Scene'} 下一張`;
+    inserted.nextNodeId = source.type === 'choice' ? '' : (source.nextNodeId || '');
+    if (getGraphLayoutMode(story) === 'custom') {
+      inserted.position = {
+        x: snapToBlockGrid((Number(source.position?.x || BLOCK_MIN_X) + 300), BLOCK_MIN_X),
+        y: snapToBlockGrid(Number(source.position?.y || BLOCK_MIN_Y), BLOCK_MIN_Y)
+      };
+    }
+    story.nodes.splice(index + 1, 0, inserted);
+    if (source.type !== 'choice') {
+      source.nextNodeId = inserted.id;
+    }
+    state.currentNodeId = inserted.id;
+    resetPreviewSelection();
+    markDirty(type === 'transition'
+      ? '已插入新的轉場卡，記得按「儲存故事」。'
+      : `已插入新的${describeNodeType(type)}，記得按「儲存故事」。`);
+    renderStories();
+    refreshPreview().catch(console.error);
+  }
+
+  function startNodeDrag(event, nodeId) {
+    if (event.button !== 0) return;
+    if (event.target.closest('button')) return;
+    const story = currentStory();
+    if (!story) return;
+    const node = story.nodes.find((entry) => entry.id === nodeId);
+    const card = event.currentTarget;
+    if (!node || !card) return;
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const initialX = Number(node.position?.x ?? BLOCK_MIN_X);
+    const initialY = Number(node.position?.y ?? BLOCK_MIN_Y);
+    let moved = false;
+
+    const move = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 6) return;
+      moved = true;
+      node.position = node.position || { x: initialX, y: initialY };
+      node.position.x = Math.max(BLOCK_MIN_X, initialX + dx);
+      node.position.y = Math.max(BLOCK_MIN_Y, initialY + dy);
+      card.classList.add('dragging');
+      card.style.left = `${node.position.x}px`;
+      card.style.top = `${node.position.y}px`;
+    };
+
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      card.classList.remove('dragging');
+      if (!moved) return;
+      node.position.x = snapToBlockGrid(node.position.x, BLOCK_MIN_X);
+      node.position.y = snapToBlockGrid(node.position.y, BLOCK_MIN_Y);
+      state.graphLayoutOverrides[story.id] = 'custom';
+      state.justDraggedNodeId = nodeId;
+      markDirty('Block 位置已更新，記得按「儲存故事」。');
+      renderStories();
+    };
+
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   }
 
   function moveStoryNode(nodeId, delta) {
@@ -1881,8 +2959,55 @@
     if (index < 0 || nextIndex < 0 || nextIndex >= story.nodes.length) return;
     const [node] = story.nodes.splice(index, 1);
     story.nodes.splice(nextIndex, 0, node);
-    state.previewStatus = 'Block 順序已調整，記得按「儲存故事」。';
+    markDirty('Block 順序已調整，記得按「儲存故事」。');
     renderStories();
+  }
+
+  function duplicateStoryNode(nodeId) {
+    const story = currentStory();
+    if (!story) return;
+    const index = story.nodes.findIndex((node) => node.id === nodeId);
+    if (index < 0) return;
+    const source = story.nodes[index];
+    const duplicated = cloneNodeForInsert(source);
+    const originalNextNodeId = source.nextNodeId || '';
+    duplicated.nextNodeId = originalNextNodeId;
+    story.nodes.splice(index + 1, 0, duplicated);
+    if (source.type !== 'choice') {
+      source.nextNodeId = duplicated.id;
+    }
+    state.currentNodeId = duplicated.id;
+    resetPreviewSelection();
+    markDirty('已複製目前卡片，尚未儲存。');
+    renderStories();
+    refreshPreview().catch(console.error);
+  }
+
+  function insertDialogueAfter(nodeId) {
+    insertNodeAfter(nodeId, 'dialogue');
+  }
+
+  function ensureNodeTransition(nodeId) {
+    const story = currentStory();
+    if (!story) return;
+    const node = story.nodes.find((entry) => entry.id === nodeId);
+    if (!node) return;
+    if (node.type === 'choice') {
+      node.optionA = node.optionA || { label: '選項 A', feedback: '', nextNodeId: '' };
+      node.optionB = node.optionB || { label: '選項 B', feedback: '', nextNodeId: '' };
+      if (!node.optionA.feedback) node.optionA.feedback = '在這裡輸入選項 A 的選後過場文案。';
+      if (!node.optionB.feedback) node.optionB.feedback = '在這裡輸入選項 B 的選後過場文案。';
+      markDirty('已為這張選項卡開啟選後過場文案，尚未儲存。');
+    } else {
+      if (!node.transitionText) {
+        node.transitionText = '在這裡輸入下一幕前的過場文案。';
+      }
+      markDirty('已為這一幕開啟過場文案，尚未儲存。');
+    }
+    state.currentNodeId = node.id;
+    resetPreviewSelection();
+    renderStories();
+    refreshPreview().catch(console.error);
   }
 
   function clearDeletedNodeReferences(story, deletedNodeId) {
@@ -1890,6 +3015,25 @@
       if (node.nextNodeId === deletedNodeId) node.nextNodeId = '';
       if (node.optionA?.nextNodeId === deletedNodeId) node.optionA.nextNodeId = '';
       if (node.optionB?.nextNodeId === deletedNodeId) node.optionB.nextNodeId = '';
+    });
+  }
+
+  function clearDeletedCharacterReferences(story, deletedCharacterId) {
+    story.nodes.forEach((node) => {
+      if (node.speakerCharacterId === deletedCharacterId) node.speakerCharacterId = '';
+      if (node.companionCharacterId === deletedCharacterId) node.companionCharacterId = '';
+      (node.pages || []).forEach((page) => {
+        if (page.speakerCharacterId === deletedCharacterId) page.speakerCharacterId = '';
+        if (page.companionCharacterId === deletedCharacterId) page.companionCharacterId = '';
+      });
+    });
+    (story.draftImport?.nodes || []).forEach((node) => {
+      if (node.speakerCharacterId === deletedCharacterId) node.speakerCharacterId = '';
+      if (node.companionCharacterId === deletedCharacterId) node.companionCharacterId = '';
+      (node.pages || []).forEach((page) => {
+        if (page.speakerCharacterId === deletedCharacterId) page.speakerCharacterId = '';
+        if (page.companionCharacterId === deletedCharacterId) page.companionCharacterId = '';
+      });
     });
   }
 
@@ -1914,13 +3058,73 @@
       state.currentNodeId = story.nodes[Math.max(0, index - 1)]?.id || story.nodes[0]?.id || '';
       resetPreviewSelection();
     }
-    state.previewStatus = '節點已刪除，相關連線已清空，記得按「儲存故事」。';
+    markDirty('節點已刪除，相關連線已清空，尚未儲存。');
     renderStories();
     refreshPreview().catch(console.error);
   }
 
+  function insertNodePage(node, afterIndex = -1) {
+    if (!node) return;
+    node.pages = Array.isArray(node.pages) ? node.pages : [];
+    const sourcePage = node.pages[Math.max(0, afterIndex)] || defaultPage(node.pages.length + 1);
+    const nextPage = clone(sourcePage);
+    nextPage.id = createLocalId('page');
+    nextPage.title = `第 ${Math.max(0, afterIndex) + 2} 頁`;
+    node.pages.splice(afterIndex + 1, 0, nextPage);
+    node.pages = normalizePageTitles(node.pages);
+    state.previewIndex = Math.max(0, afterIndex + 1);
+    markDirty('已新增頁面，尚未儲存。');
+    renderNodeEditor();
+    schedulePreview();
+  }
+
+  function moveNodePage(node, pageIndex, delta) {
+    if (!node?.pages?.[pageIndex]) return;
+    const nextIndex = pageIndex + delta;
+    if (nextIndex < 0 || nextIndex >= node.pages.length) return;
+    const [page] = node.pages.splice(pageIndex, 1);
+    node.pages.splice(nextIndex, 0, page);
+    node.pages = normalizePageTitles(node.pages);
+    state.previewIndex = nextIndex;
+    markDirty('頁面順序已調整，尚未儲存。');
+    renderNodeEditor();
+    schedulePreview();
+  }
+
+  function deleteNodePage(node, pageIndex) {
+    if (!node?.pages?.[pageIndex]) return;
+    if (node.pages.length <= 1) {
+      state.previewStatus = '至少保留一頁，無法再刪除。';
+      renderPreviewOnly();
+      return;
+    }
+    const ok = window.confirm(`要刪除「${node.pages[pageIndex].title || `第 ${pageIndex + 1} 頁`}」嗎？`);
+    if (!ok) return;
+    node.pages.splice(pageIndex, 1);
+    node.pages = normalizePageTitles(node.pages);
+    state.previewIndex = Math.max(0, Math.min(pageIndex, node.pages.length - 1));
+    markDirty('頁面已刪除，尚未儲存。');
+    renderNodeEditor();
+    schedulePreview();
+  }
+
   function updatePageField(node, pageIndex, field, value) {
     node.pages[pageIndex][field] = value;
+    if (field === 'cardType') {
+      if (value === 'dialogue') {
+        ensureDialogueRoleDefaults(node.pages[pageIndex]);
+      } else if (value === 'narration') {
+        clearDialogueRoleFields(node.pages[pageIndex]);
+      }
+      renderNodeEditor();
+    }
+    if (field === 'speakerCharacterId' && node.pages[pageIndex].companionCharacterId === value) {
+      node.pages[pageIndex].companionCharacterId = '';
+    }
+    if (field === 'companionCharacterId' && node.pages[pageIndex].speakerCharacterId === value) {
+      node.pages[pageIndex].companionCharacterId = '';
+    }
+    markDirty('目前頁面已修改，尚未儲存。');
     schedulePreview();
   }
 
@@ -1928,6 +3132,7 @@
     const node = currentNode();
     if (!node) return;
     node[optionKey][field] = value;
+    markDirty(`選項 ${optionKey === 'optionA' ? 'A' : 'B'} 已修改，尚未儲存。`);
     schedulePreview();
   }
 
@@ -1961,6 +3166,7 @@
       });
     }
     syncStoryCharacterPreview(index);
+    markDirty('角色設定已修改，尚未儲存。');
     schedulePreview();
   }
 
@@ -2005,10 +3211,18 @@
     if (type === 'carousel' && !node.pages) {
       node.pages = [defaultPage(1)];
     }
-    if (type === 'narration') {
-      node.speakerCharacterId = '';
-      node.companionCharacterId = '';
+    if (type === 'dialogue') {
+      ensureDialogueRoleDefaults(node);
     }
+    if (type === 'narration') {
+      clearDialogueRoleFields(node);
+    }
+    if (type !== 'choice') {
+      delete node.optionA;
+      delete node.optionB;
+      delete node.prompt;
+    }
+    markDirty(`已改成${describeNodeType(type)}，尚未儲存。`);
     renderNodeEditor();
     schedulePreview();
   }
@@ -2026,7 +3240,7 @@
       heroImageOpacity: 1,
       heroImageScale: 1,
       nameplateSize: 'lg',
-      speakerCharacterId: 'char-bear',
+      speakerCharacterId: defaultSpeakerId(),
       companionCharacterId: ''
     };
   }

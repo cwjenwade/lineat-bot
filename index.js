@@ -4,7 +4,6 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const path = require('path');
 
-const { mountAdmin } = require('./lib/adminMount');
 const { recordAction } = require('./lib/storyAuthoringStore');
 const { createStoryRuntime } = require('./lib/storyRuntime');
 
@@ -31,13 +30,37 @@ const storyRuntime = createStoryRuntime({
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
-mountAdmin(app, { uiPath: '/admin', apiPath: '/admin-api' });
+
+function isLocalHost(req) {
+  const host = `${req.get('host') || ''}`.toLowerCase();
+  return host.includes('localhost') || host.includes('127.0.0.1');
+}
+
+function localAdminBase(req) {
+  const hostname = req.hostname === '127.0.0.1' ? '127.0.0.1' : 'localhost';
+  return `http://${hostname}:3002`;
+}
+
+app.get('/admin', (req, res) => {
+  if (!isLocalHost(req)) {
+    return res.status(404).json({ error: 'Admin is served from the standalone admin server.' });
+  }
+  res.redirect(302, `${localAdminBase(req)}/`);
+});
+
+app.use('/admin-api', (req, res) => {
+  if (!isLocalHost(req)) {
+    return res.status(404).json({ error: 'Admin API is served from the standalone admin server.' });
+  }
+  const query = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
+  res.redirect(307, `${localAdminBase(req)}/api${req.path}${query}`);
+});
 
 app.get('/', (_req, res) => {
   res.json({
     ok: true,
     name: 'lineat',
-    admin: '/admin',
+    admin: 'http://localhost:3002/',
     health: '/health'
   });
 });
@@ -80,11 +103,17 @@ function getSessionKey(event) {
 async function handleTextEvent(event) {
   const sessionKey = getSessionKey(event);
   const text = `${event.message.text || ''}`;
-  const result = await storyRuntime.processTextInput(text, sessionKey);
-  return client.replyMessage(event.replyToken, result.messages);
+  const result = await storyRuntime.processTextInput(text, sessionKey, {
+    source: 'webhook'
+  });
+  console.log('SENDING TO LINE');
+  const response = await client.replyMessage(event.replyToken, result.messages);
+  console.log('LINE RESPONSE:', response?.status ?? 'unknown', response?.data ?? response ?? null);
+  return response;
 }
 
 function handleEvent(event) {
+  console.log('WEBHOOK EVENT:', JSON.stringify(event, null, 2));
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
