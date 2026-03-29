@@ -4,7 +4,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const path = require('path');
 
-const { readStore, recordAction } = require('./lib/storyAuthoringStore');
+const { recordAction, getStoreSnapshot } = require('./lib/storyAuthoringStore');
 const { createStoryRuntime } = require('./lib/storyRuntime');
 const { buildRenderResult } = require('./lib/lineatRenderer');
 
@@ -26,8 +26,17 @@ const storyRuntime = createStoryRuntime({
   sessionStore: new Map(),
   publicBaseUrl,
   requirePublishedAssets: true,
-  usePublishedAssets: true
+  usePublishedAssets: true,
+  getStore: () => getStoreSnapshot(),
+  onRecord: (...args) => setImmediate(() => {
+    try {
+      recordAction(...args);
+    } catch (error) {
+      console.error('recordAction async error:', error);
+    }
+  })
 });
+const storyMenuCache = new WeakMap();
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
@@ -106,8 +115,22 @@ function getStoryTriggerKeyword(store, story) {
     .find((binding) => binding.storyId === story.id && `${binding.keyword || ''}`.trim())?.keyword || '';
 }
 
+function startTimer() {
+  return process.hrtime.bigint();
+}
+
+function elapsedMs(start) {
+  return Number(process.hrtime.bigint() - start) / 1e6;
+}
+
 async function buildStoryMenuMessages() {
-  const store = readStore();
+  const store = getStoreSnapshot();
+  if (storyMenuCache.has(store)) {
+    return {
+      messages: storyMenuCache.get(store),
+      cacheHit: true
+    };
+  }
   const stories = (store.stories || [])
     .map((story) => ({
       story,
@@ -117,10 +140,15 @@ async function buildStoryMenuMessages() {
     .slice(0, 10);
 
   if (!stories.length) {
-    return [{
+    const empty = [{
       type: 'text',
       text: '目前還沒有可閱讀的故事。'
     }];
+    storyMenuCache.set(store, empty);
+    return {
+      messages: empty,
+      cacheHit: false
+    };
   }
 
   const bubbles = await Promise.all(stories.map(async ({ story, triggerKeyword }) => {
@@ -197,7 +225,7 @@ async function buildStoryMenuMessages() {
     };
   }));
 
-  return [{
+  const messages = [{
     type: 'flex',
     altText: '繪本故事選單',
     contents: {
@@ -205,21 +233,71 @@ async function buildStoryMenuMessages() {
       contents: bubbles
     }
   }];
+  storyMenuCache.set(store, messages);
+  return {
+    messages,
+    cacheHit: false
+  };
+}
+
+function logWebhookTiming(meta = {}) {
+  const line = [
+    '[webhook-timing]',
+    `kind=${meta.kind || 'story'}`,
+    meta.text ? `text=${JSON.stringify(meta.text)}` : '',
+    meta.sessionKey ? `session=${meta.sessionKey}` : '',
+    Number.isFinite(meta.buildMs) ? `buildMs=${meta.buildMs.toFixed(1)}` : '',
+    Number.isFinite(meta.replyMs) ? `replyMs=${meta.replyMs.toFixed(1)}` : '',
+    Number.isFinite(meta.totalMs) ? `totalMs=${meta.totalMs.toFixed(1)}` : '',
+    Number.isFinite(meta.messageCount) ? `messages=${meta.messageCount}` : '',
+    typeof meta.cacheHit === 'boolean' ? `cache=${meta.cacheHit ? 'hit' : 'miss'}` : '',
+    meta.mode ? `mode=${meta.mode}` : '',
+    meta.requestId ? `requestId=${meta.requestId}` : ''
+  ].filter(Boolean).join(' ');
+  console.log(line);
 }
 
 async function handleTextEvent(event) {
   const sessionKey = getSessionKey(event);
   const text = `${event.message.text || ''}`;
+  const requestTimer = startTimer();
   if (text.trim() === '顯示繪本故事') {
-    const messages = await buildStoryMenuMessages();
-    return client.replyMessage(event.replyToken, messages);
+    const buildTimer = startTimer();
+    const menu = await buildStoryMenuMessages();
+    const buildMs = elapsedMs(buildTimer);
+    const replyTimer = startTimer();
+    const response = await client.replyMessage(event.replyToken, menu.messages);
+    logWebhookTiming({
+      kind: 'story-menu',
+      text,
+      sessionKey,
+      buildMs,
+      replyMs: elapsedMs(replyTimer),
+      totalMs: elapsedMs(requestTimer),
+      messageCount: menu.messages.length,
+      cacheHit: menu.cacheHit,
+      requestId: response?.headers?.['x-line-request-id'] || response?.headers?.get?.('x-line-request-id') || ''
+    });
+    return response;
   }
+  const runtimeTimer = startTimer();
   const result = await storyRuntime.processTextInput(text, sessionKey, {
     source: 'webhook'
   });
-  console.log('SENDING TO LINE');
+  const buildMs = elapsedMs(runtimeTimer);
+  const replyTimer = startTimer();
   const response = await client.replyMessage(event.replyToken, result.messages);
-  console.log('LINE RESPONSE:', response?.status ?? 'unknown', response?.data ?? response ?? null);
+  logWebhookTiming({
+    kind: 'story-runtime',
+    text,
+    sessionKey,
+    mode: result.mode || '',
+    buildMs,
+    replyMs: elapsedMs(replyTimer),
+    totalMs: elapsedMs(requestTimer),
+    messageCount: result.messages?.length || 0,
+    requestId: response?.headers?.['x-line-request-id'] || response?.headers?.get?.('x-line-request-id') || ''
+  });
   return response;
 }
 
