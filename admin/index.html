@@ -64,6 +64,104 @@
     .layout {
       padding: 20px 24px 32px;
     }
+    .hero-shell {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      margin-bottom: 20px;
+    }
+    .hero-banner {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.2fr) minmax(0, 1.8fr);
+      gap: 18px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background:
+        radial-gradient(circle at top left, rgba(245, 223, 209, 0.9), transparent 42%),
+        linear-gradient(135deg, #fffdf9, #f8efe5 55%, #f4e2d3 100%);
+      box-shadow: var(--shadow);
+    }
+    .hero-copy {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 16px;
+      min-width: 0;
+    }
+    .hero-kicker {
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--brand);
+    }
+    .hero-title {
+      margin: 0;
+      font-size: clamp(34px, 5vw, 54px);
+      line-height: 0.95;
+      letter-spacing: 0.02em;
+    }
+    .hero-subtitle {
+      max-width: 32rem;
+      font-size: 15px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+    .hero-actions {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      align-items: stretch;
+    }
+    .hero-action {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+      min-height: 188px;
+      padding: 18px;
+      border: 1px solid rgba(160, 125, 94, 0.16);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.84);
+      text-align: left;
+    }
+    .hero-action-label {
+      font-size: 13px;
+      font-weight: 900;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--brand);
+    }
+    .hero-action-title {
+      font-size: 30px;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .hero-action-copy {
+      font-size: 14px;
+      line-height: 1.65;
+      color: var(--muted);
+    }
+    .hero-action .button {
+      width: fit-content;
+      min-width: 140px;
+    }
+    .hero-tab-button.active {
+      background: var(--brand);
+      color: white;
+      border-color: var(--brand);
+    }
+    .hero-status {
+      padding: 14px 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: rgba(255, 253, 250, 0.95);
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
     .page {
       display: none;
       gap: 16px;
@@ -77,6 +175,29 @@
     .stories-grid {
       grid-template-columns: 1fr;
       align-items: start;
+    }
+    .story-sections {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .story-content-grid,
+    .story-structure-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 18px;
+    }
+    .story-subpanel {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fffdfa, #fcf6ee);
+      padding: 16px;
+    }
+    .overview-status-list,
+    .setting-route-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
     }
     .story-shell {
       display: flex;
@@ -130,6 +251,49 @@
       background: var(--brand);
       color: white;
       border-color: var(--brand);
+    }
+    .keyword-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .keyword-tab {
+      border: 1px solid var(--line);
+      background: white;
+      border-radius: 999px;
+      padding: 8px 14px;
+      font-weight: 800;
+      color: var(--ink);
+      transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+    }
+    .keyword-tab:hover {
+      transform: translateY(-1px);
+      border-color: #d3b79f;
+      box-shadow: 0 8px 20px rgba(45, 36, 27, 0.08);
+    }
+    .keyword-tab.active {
+      background: rgba(202, 127, 64, 0.14);
+      border-color: rgba(202, 127, 64, 0.45);
+    }
+    .keyword-editor-card {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: linear-gradient(180deg, #fffdfa, #fcf6ee);
+    }
+    .field-hint {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .scope-hint {
+      margin-top: 8px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
     }
     .story-tab-index {
       font-size: 12px;
@@ -386,6 +550,9 @@
       display: block;
       font-size: 24px;
       margin-top: 6px;
+    }
+    .progress-card .field-hint {
+      margin-top: 8px;
     }
     .module-button {
       min-width: 110px;
@@ -748,11 +915,44 @@
       grid-template-columns: minmax(0, 1fr);
       gap: 16px;
     }
+    .editor-breadcrumb {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 8px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+    .editor-breadcrumb span:not(:last-child)::after {
+      content: "/";
+      margin-left: 8px;
+      opacity: 0.56;
+    }
+    .editor-selection-scope {
+      margin-top: 6px;
+      font-size: 13px;
+      color: var(--brand);
+      font-weight: 800;
+    }
     .preview-area {
       display: flex;
       flex-direction: column;
       gap: 14px;
+    }
+    .preview-workbench {
+      display: grid;
+      grid-template-columns: minmax(320px, 0.92fr) minmax(0, 1.28fr);
+      gap: 18px;
       min-height: 980px;
+    }
+    .preview-editor-column,
+    .preview-view-column {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      min-width: 0;
     }
     .preview-scroller {
       display: flex;
@@ -787,6 +987,11 @@
     .preview-toolbar .subtle {
       max-width: 70%;
     }
+    .preview-hint-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
     .preview-counter {
       font-size: 13px;
       color: var(--muted);
@@ -802,6 +1007,15 @@
       font-size: 12px;
       color: var(--muted);
       word-break: break-all;
+    }
+    .preview-version-hint {
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fffdfa;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.6;
     }
     .payload {
       background: #141313;
@@ -1056,7 +1270,16 @@
       .studio-grid {
         grid-template-columns: 1fr;
       }
+      .story-content-grid,
+      .story-structure-grid,
+      .preview-workbench {
+        grid-template-columns: 1fr;
+      }
       .character-editor-grid {
+        grid-template-columns: 1fr;
+      }
+      .hero-banner,
+      .hero-actions {
         grid-template-columns: 1fr;
       }
       .character-preview-shell {
@@ -1078,8 +1301,57 @@
   </header>
 
   <main class="layout">
-    <section class="page stories-grid active" id="page-stories">
-      <section class="panel story-shell">
+    <section class="hero-shell">
+      <section class="hero-banner">
+        <div class="hero-copy">
+          <div>
+            <div class="hero-kicker">Line OA Control Center</div>
+            <h1 class="hero-title">Ho-Se Ong Lai</h1>
+          </div>
+          <div class="hero-subtitle">
+            把整個 LINE 帳號的操作集中在上方。這裡先處理四個核心入口：Setting、Story、Approval、Render。
+          </div>
+        </div>
+        <div class="hero-actions">
+          <section class="hero-action">
+            <div>
+              <div class="hero-action-label">Account</div>
+              <div class="hero-action-title">Setting</div>
+            </div>
+            <div class="hero-action-copy">管理圖文選單與總帳號關鍵字，直接跳到帳號級路由設定區。</div>
+            <button class="button secondary hero-tab-button" data-workspace-tab="setting">Setting</button>
+          </section>
+          <section class="hero-action">
+            <div>
+              <div class="hero-action-label">Content</div>
+              <div class="hero-action-title">Story</div>
+            </div>
+            <div class="hero-action-copy">查看目前所有故事，切換到要編輯的內容工作區。</div>
+            <button class="button secondary hero-tab-button active" data-workspace-tab="story">Story</button>
+          </section>
+          <section class="hero-action">
+            <div>
+              <div class="hero-action-label">Publish</div>
+              <div class="hero-action-title">Approval</div>
+            </div>
+            <div class="hero-action-copy">儲存現在後台的設定與素材，並生成最新部署圖片。</div>
+            <button class="button good" id="hero-approval">Approval</button>
+          </section>
+          <section class="hero-action">
+            <div>
+              <div class="hero-action-label">Deploy</div>
+              <div class="hero-action-title">Render</div>
+            </div>
+            <div class="hero-action-copy">把整個目前版本打包推送到 Render，讓正式帳號抓最新內容。</div>
+            <button class="button warn" id="hero-render">Render</button>
+          </section>
+        </div>
+      </section>
+      <div class="hero-status" id="hero-status">尚未載入節點。</div>
+    </section>
+
+    <section class="page stories-grid active" id="page-stories" data-page-tab="story">
+      <section class="panel story-shell" id="story-section">
         <div class="story-bar">
           <div class="story-bar-label">Story</div>
           <div class="story-tabs" id="story-list"></div>
@@ -1097,219 +1369,295 @@
           <div class="actions" id="story-stage-tabs">
             <button class="button secondary" id="duplicate-story">複製故事</button>
             <button class="button ghost" id="delete-story">刪除故事</button>
-            <button class="stage-tab" data-story-stage="import">匯入劇本</button>
-            <button class="stage-tab" data-story-stage="characters">角色建置</button>
-            <button class="stage-tab active" data-story-stage="final">預覽與編輯</button>
           </div>
         </div>
 
-        <div class="stage-panel" id="story-stage-import">
+        <div class="story-sections">
           <section class="panel story-section">
             <div class="row space-between">
               <div>
-                <h3>劇本匯入模組</h3>
-                <div class="subtle">貼上文字或上傳檔案。AI 草稿會先進入待校正狀態。</div>
-              </div>
-              <div class="actions">
-                <button class="button secondary" id="match-unbound-roles">一鍵對應角色</button>
-                <button class="button" id="import-script-text">匯入文字劇本</button>
+                <h3>Overview</h3>
+                <div class="subtle">只處理這個故事自己的基本設定與狀態提示。帳號共用 keyword route 請到上方 Setting。</div>
               </div>
             </div>
+            <div class="overview-status-list" id="story-overview-status"></div>
             <div class="field-grid">
-              <div class="field" style="grid-column: 1 / -1;">
-                <label>貼上劇本文字</label>
-                <textarea id="script-import-text" placeholder="貼上完整劇本，系統會先解析成待校正草稿。"></textarea>
+              <div class="field">
+                <label>故事標題</label>
+                <input id="story-title-input" />
               </div>
               <div class="field">
-                <label>上傳劇本檔案</label>
-                <input id="script-import-file" type="file" accept=".txt,.md,.text" />
+                <label>故事啟動 Keyword</label>
+                <input id="story-trigger-input" placeholder="例如：101" />
+                <div class="scope-hint" id="story-trigger-hint">這裡只修改目前故事自己的啟動 keyword。像「顯示繪本故事」這類帳號共用指令請到 Setting。</div>
               </div>
               <div class="field">
-                <label>草稿狀態</label>
-                <div class="status-box" id="draft-import-status">尚未匯入劇本。</div>
+                <label>開始節點</label>
+                <select id="story-start-node"></select>
+              </div>
+              <div class="field">
+                <label>說明</label>
+                <input id="story-description-input" />
               </div>
             </div>
+            <div class="progress-grid" id="story-progress-grid"></div>
           </section>
 
-          <div class="import-review-grid">
+          <section class="story-content-grid">
             <section class="panel story-section">
               <div class="row space-between">
-                <h3>AI 劇本草稿</h3>
-                <div class="actions">
-                  <button class="button secondary" id="save-draft-import">儲存草稿</button>
-                  <button class="button good" id="apply-all-draft">套用到正式故事</button>
+                <div>
+                  <h3>Content</h3>
+                  <div class="subtle">角色、素材與劇本內容都在這裡處理。</div>
+                </div>
+                <div class="pill" id="story-count"></div>
+              </div>
+              <div class="story-subpanel">
+                <div class="row space-between">
+                  <div>
+                    <h3>角色建置</h3>
+                    <div class="subtle">角色會綁定頭像、位置與姓名牌樣式，後續整個故事共用。</div>
+                  </div>
+                  <div class="actions">
+                    <button class="button secondary" id="add-protagonist-template">主角模板</button>
+                    <button class="button secondary" id="add-supporting-template">配角模板</button>
+                    <button class="button secondary" id="add-story-character">新增角色</button>
+                  </div>
+                </div>
+                <div class="story-list story-character-list" id="story-character-list"></div>
+              </div>
+            </section>
+
+            <section class="panel story-section">
+              <div class="story-subpanel">
+                <div class="row space-between">
+                  <div>
+                    <h3>劇本匯入模組</h3>
+                    <div class="subtle">貼上文字或上傳檔案。AI 草稿會先進入待校正狀態。</div>
+                  </div>
+                  <div class="actions">
+                    <button class="button secondary" id="match-unbound-roles">一鍵對應角色</button>
+                    <button class="button" id="import-script-text">匯入文字劇本</button>
+                  </div>
+                </div>
+                <div class="field-grid">
+                  <div class="field" style="grid-column: 1 / -1;">
+                    <label>貼上劇本文字</label>
+                    <textarea id="script-import-text" placeholder="貼上完整劇本，系統會先解析成待校正草稿。"></textarea>
+                  </div>
+                  <div class="field">
+                    <label>上傳劇本檔案</label>
+                    <input id="script-import-file" type="file" accept=".txt,.md,.text" />
+                  </div>
+                  <div class="field">
+                    <label>草稿狀態</label>
+                    <div class="status-box" id="draft-import-status">尚未匯入劇本。</div>
+                  </div>
                 </div>
               </div>
-              <div class="story-list" id="draft-node-list"></div>
-            </section>
-            <section class="panel story-section">
-              <h3>人工校正模式</h3>
-              <div class="editor-shell" id="draft-editor-empty">
-                <div class="status-box">先從左邊 AI 草稿點選一個節點。</div>
-              </div>
-              <div class="editor-shell hidden" id="draft-editor-shell">
-                <div id="draft-editor-form"></div>
-              </div>
-            </section>
-          </div>
-        </div>
 
-        <div class="stage-panel" id="story-stage-characters">
+              <div class="import-review-grid">
+                <section class="story-subpanel">
+                  <div class="row space-between">
+                    <h3>AI 劇本草稿</h3>
+                    <div class="actions">
+                      <button class="button secondary" id="save-draft-import">儲存草稿</button>
+                      <button class="button good" id="apply-all-draft">套用到正式故事</button>
+                    </div>
+                  </div>
+                  <div class="story-list" id="draft-node-list"></div>
+                </section>
+                <section class="story-subpanel">
+                  <h3>人工校正模式</h3>
+                  <div class="editor-shell" id="draft-editor-empty">
+                    <div class="status-box">先從左邊 AI 草稿點選一個節點。</div>
+                  </div>
+                  <div class="editor-shell hidden" id="draft-editor-shell">
+                    <div id="draft-editor-form"></div>
+                  </div>
+                </section>
+              </div>
+            </section>
+          </section>
+
           <section class="panel story-section">
             <div class="row space-between">
               <div>
-                <h3>角色建置</h3>
-                <div class="subtle">角色會綁定頭像、位置與姓名牌樣式，後續整個故事共用。</div>
+                <h3>Structure</h3>
+                <div class="subtle">故事結構與快速增補集中在這裡，預覽編輯已移到右側 Preview 工作台。</div>
               </div>
               <div class="actions">
-                <button class="button secondary" id="add-protagonist-template">主角模板</button>
-                <button class="button secondary" id="add-supporting-template">配角模板</button>
-                <button class="button secondary" id="add-story-character">新增角色</button>
-              </div>
-            </div>
-            <div class="story-list story-character-list" id="story-character-list"></div>
-          </section>
-        </div>
-
-        <div class="stage-panel active" id="story-stage-final">
-          <section class="panel block-panel">
-            <div class="row space-between">
-              <div>
-                <h3>Block</h3>
-                <div class="subtle">點選節點後，左下預覽與右下編輯會同步切換；也可以直接拖拉 block 重新排版。</div>
-              </div>
-              <div class="actions">
-                <button class="button secondary" id="save-story">儲存故事</button>
-                <button class="button secondary" id="publish-assets">產生部署圖片</button>
-                <button class="button warn" id="deploy-render">發布到 Render</button>
                 <button class="button ghost" id="validate-story">檢查故事</button>
               </div>
             </div>
-            <div class="graph" id="node-graph"></div>
-          </section>
 
-          <div class="studio-grid">
-            <section class="panel preview-area">
+            <div class="module-bar">
+              <button class="module-button" data-add-node="dialogue">＋ 對話卡</button>
+              <button class="module-button" data-add-node="narration">＋ 旁白卡</button>
+              <button class="module-button" data-add-node="choice">＋ 選項卡</button>
+              <button class="module-button" data-add-node="transition">＋ 過場</button>
+              <button class="module-button" data-add-node="carousel">＋ 多頁訊息</button>
+            </div>
+
+            <div class="story-subpanel">
               <div class="row space-between">
-                <h2>即時預覽</h2>
-                <div class="actions">
-                  <button class="button ghost" id="validate-node">Validate 單卡</button>
+                <div>
+                  <h3>Graph</h3>
+                  <div class="subtle">內容卡、選擇點、過場映射會用不同語意顯示。點選後，右側 Preview 工作台會同步切到對應編輯層級。</div>
                 </div>
               </div>
-              <div class="status-box" id="preview-status">尚未載入節點。</div>
-              <div class="preview-tabs" id="preview-tabs">
-                <button class="preview-tab active" data-preview-panel="visual">視覺預覽</button>
-                <button class="preview-tab" data-preview-panel="payload">JSON</button>
-                <button class="preview-tab" data-preview-panel="simulate">模擬事件（走 runtime）</button>
+              <div class="graph" id="node-graph"></div>
+            </div>
+
+            <section class="story-subpanel">
+              <div class="row space-between">
+                <div>
+                  <h3>Quick Add Flow</h3>
+                  <div class="subtle">每行一張卡。格式可用「角色：台詞」或「旁白：內容」。</div>
+                </div>
+                <button class="button secondary" id="append-dialogue-flow">批次新增對話</button>
               </div>
-              <div class="preview-panel active" id="preview-panel-visual">
+              <div class="field-grid">
+                <div class="field" style="grid-column: 1 / -1;">
+                  <label>對話腳本</label>
+                  <textarea id="quick-dialogue-input" placeholder="熊熊：今天我想往山那邊看看。\n莉莉：如果你願意，我可以陪你一起去。\n旁白：兩隻小熊在清晨的陽光裡踏上新的旅程。"></textarea>
+                </div>
+              </div>
+            </section>
+
+          </section>
+
+          <section class="panel preview-area">
+            <div class="row space-between">
+              <div>
+                <h2>Preview</h2>
+                <div class="subtle">預覽畫面與預覽編輯並排工作，左邊編輯目前卡片，右邊看輸出與模擬。</div>
+              </div>
+              <div class="actions">
+                <button class="button ghost" id="validate-node">Validate 單卡</button>
+              </div>
+            </div>
+            <div class="status-box" id="preview-status">尚未載入節點。</div>
+            <div class="preview-workbench">
+              <div class="preview-editor-column">
+                <section class="story-subpanel">
+                  <div class="row space-between">
+                    <div>
+                      <h3>Preview Editor</h3>
+                      <div class="subtle">只處理目前選中的節點或頁面，改完會直接刷新右側預覽。</div>
+                    </div>
+                  </div>
+                  <div class="editor-shell" id="node-editor-empty">
+                    <div class="status-box">先在左側 Graph 點選一個節點。</div>
+                  </div>
+                  <div class="editor-shell hidden" id="node-editor-shell">
+                    <div id="node-editor-form"></div>
+                  </div>
+                </section>
+              </div>
+              <div class="preview-view-column">
+                <div class="preview-tabs" id="preview-tabs">
+                  <button class="preview-tab active" data-preview-panel="visual">視覺預覽</button>
+                  <button class="preview-tab" data-preview-panel="payload">JSON</button>
+                  <button class="preview-tab" data-preview-panel="simulate">模擬事件（走 runtime）</button>
+                </div>
+                <div class="preview-panel active" id="preview-panel-visual">
                 <div class="preview-toolbar">
                   <div class="subtle">這裡會直接顯示整組卡片。</div>
                   <div class="preview-counter" id="preview-counter">0 張</div>
                 </div>
+                <div class="preview-hint-stack">
+                  <div class="preview-version-hint" id="preview-version-hint">目前預覽的是編輯版；LINE 顯示的是最後一次已發布到 Render 的版本。</div>
+                </div>
                 <div class="preview-output-meta" id="preview-output-meta">目前尚未產生輸出圖。</div>
                 <div class="preview-scroller" id="scene-preview"></div>
               </div>
-              <div class="preview-panel" id="preview-panel-payload">
-                <h3>LINE Payload 預覽</h3>
-                <pre class="payload" id="payload-preview"></pre>
-              </div>
-              <div class="preview-panel" id="preview-panel-simulate">
-                <div class="simulation-box">
-                  <div class="row space-between">
-                    <h3>模擬事件（走 runtime）</h3>
-                    <div class="actions">
-                      <button class="button secondary" id="simulate-reset">重置 session</button>
-                      <button class="button good" id="simulate-message">送出文字事件</button>
+                <div class="preview-panel" id="preview-panel-payload">
+                  <h3>LINE Payload 預覽</h3>
+                  <pre class="payload" id="payload-preview"></pre>
+                </div>
+                <div class="preview-panel" id="preview-panel-simulate">
+                  <div class="simulation-box">
+                    <div class="row space-between">
+                      <h3>模擬事件（走 runtime）</h3>
+                      <div class="actions">
+                        <button class="button secondary" id="simulate-reset">重置 session</button>
+                        <button class="button good" id="simulate-message">送出文字事件</button>
+                      </div>
                     </div>
+                    <div class="field-grid">
+                      <div class="field">
+                        <label>測試文字</label>
+                        <input id="simulate-text" value="" />
+                      </div>
+                      <div class="field">
+                        <label>Session Key</label>
+                        <input id="simulate-session-key" value="local-preview" />
+                      </div>
+                    </div>
+                    <pre class="simulation-output" id="simulation-output">尚未執行事件測試。</pre>
                   </div>
-                  <div class="field-grid">
-                    <div class="field">
-                      <label>測試文字</label>
-                      <input id="simulate-text" value="" />
-                    </div>
-                    <div class="field">
-                      <label>Session Key</label>
-                      <input id="simulate-session-key" value="local-preview" />
-                    </div>
-                  </div>
-                  <pre class="simulation-output" id="simulation-output">尚未執行事件測試。</pre>
                 </div>
               </div>
-            </section>
+            </div>
+          </section>
 
-            <section class="panel editor-design">
+          <section class="panel story-section">
               <div class="row space-between">
                 <div>
-                  <h2>預覽與編輯</h2>
-                  <div class="subtle">在這裡直接修改目前節點或多頁訊息的每一頁。</div>
+                  <h3>Publish</h3>
+                  <div class="subtle">這一區只處理整個故事的儲存、產圖、驗證與正式部署。</div>
                 </div>
-                <div class="pill" id="story-count"></div>
+                <div class="actions">
+                  <button class="button secondary" id="save-story">儲存故事</button>
+                  <button class="button secondary" id="publish-assets">產生部署圖片</button>
+                  <button class="button warn" id="deploy-render">發布到 Render</button>
+                </div>
               </div>
+              <div class="scope-hint" id="publish-scope-hint">儲存故事只會更新編輯版；產生部署圖片會重建整個故事的正式圖片；發布到 Render 會把最後一次產圖結果上線。</div>
+            </div>
+            <div class="progress-grid" id="story-publish-summary"></div>
+          </section>
+        </div>
+      </section>
+    </section>
 
-              <section class="editor-section">
-                <div class="row space-between">
-                  <div>
-                    <h3>故事設定</h3>
-                    <div class="subtle">這裡只處理故事層級資料。</div>
-                  </div>
-                  <button class="button" id="save-story-meta">儲存故事</button>
-                </div>
-
-                <div class="field-grid">
-                  <div class="field">
-                    <label>故事標題</label>
-                    <input id="story-title-input" />
-                  </div>
-                  <div class="field">
-                    <label>開始節點</label>
-                    <select id="story-start-node"></select>
-                  </div>
-                  <div class="field">
-                    <label>觸發關鍵字</label>
-                    <input id="story-trigger-input" placeholder="例如：101" />
-                  </div>
-                  <div class="field">
-                    <label>說明</label>
-                    <input id="story-description-input" />
-                  </div>
-                </div>
-
-                <div class="progress-grid" id="story-progress-grid"></div>
-              </section>
-
-              <div class="module-bar">
-                <button class="module-button" data-add-node="dialogue">＋ 對話卡</button>
-                <button class="module-button" data-add-node="narration">＋ 旁白卡</button>
-                <button class="module-button" data-add-node="choice">＋ 選項卡</button>
-                <button class="module-button" data-add-node="transition">＋ 過場</button>
-                <button class="module-button" data-add-node="carousel">＋ 多頁訊息</button>
-              </div>
-
-              <section class="panel story-section">
-                <div class="row space-between">
-                  <div>
-                    <h3>快速新增對話流</h3>
-                    <div class="subtle">每行一張卡。格式可用「角色：台詞」或「旁白：內容」，會直接插在目前節點後面。</div>
-                  </div>
-                  <button class="button secondary" id="append-dialogue-flow">批次新增對話</button>
-                </div>
-                <div class="field-grid">
-                  <div class="field" style="grid-column: 1 / -1;">
-                    <label>對話腳本</label>
-                    <textarea id="quick-dialogue-input" placeholder="熊熊：今天我想往山那邊看看。\n莉莉：如果你願意，我可以陪你一起去。\n旁白：兩隻小熊在清晨的陽光裡踏上新的旅程。"></textarea>
-                  </div>
-                </div>
-              </section>
-
-              <div class="editor-shell" id="node-editor-empty">
-                <div class="status-box">先在上方 Block 點選一個節點。</div>
-              </div>
-              <div class="editor-shell hidden" id="node-editor-shell">
-                <div id="node-editor-form"></div>
-              </div>
-            </section>
+    <section class="page settings-grid" id="page-settings" data-page-tab="setting">
+      <section class="panel story-section" id="account-setting-section">
+        <div class="row space-between">
+          <div>
+            <h3>Setting</h3>
+            <div class="subtle">這裡只管理整個 LINE account 的共用指令，例如顯示繪本、過場訊息與 carousel；不是某個故事自己的 trigger。</div>
           </div>
+          <div class="actions">
+            <button class="button secondary" id="add-keyword-story">＋ 故事 keyword</button>
+            <button class="button secondary" id="add-keyword-transition">＋ 過場 keyword</button>
+            <button class="button secondary" id="add-keyword-carousel">＋ Carousel keyword</button>
+            <button class="button" id="save-account-settings">儲存 Setting</button>
+          </div>
+        </div>
+        <div class="subtle" id="setting-status">這裡編輯的是全帳號共用 trigger route。</div>
+        <div class="story-content-grid">
+          <section class="panel story-section">
+            <div class="row space-between">
+              <div>
+                <h3>Account Triggers</h3>
+                <div class="subtle">這裡是帳號級指令，不等於某個 Story 自己的 trigger。</div>
+              </div>
+            </div>
+            <div class="keyword-tabs" id="keyword-binding-tabs"></div>
+            <div class="setting-route-list" id="setting-route-overview"></div>
+          </section>
+
+          <section class="panel story-section">
+            <div class="row space-between">
+              <div>
+                <h3>Trigger Editor</h3>
+                <div class="subtle">若動作類型是 story，可指定要導向哪一個故事；若是 transition 或 carousel，則完全屬於 account 指令。</div>
+              </div>
+            </div>
+            <div id="keyword-binding-editor"></div>
+          </section>
         </div>
       </section>
     </section>
@@ -1320,6 +1668,7 @@
       apiBase: '__ADMIN_API_BASE__'
     };
   </script>
+  <script src="__ADMIN_ASSET_BASE__/app-keyword-routes.js"></script>
   <script src="__ADMIN_ASSET_BASE__/app.js"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@ const path = require('path');
 
 const { recordAction, getHotStoreSnapshot } = require('./lib/storyAuthoringStore');
 const { createStoryRuntime } = require('./lib/storyRuntime');
-const { buildRenderResult } = require('./lib/lineatRenderer');
+const { resolveKeywordBindingAction } = require('./lib/storyKeywordActions');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -29,6 +29,7 @@ const storyRuntime = createStoryRuntime({
   requirePublishedAssets: true,
   usePublishedAssets: true,
   getStore: () => getHotStoreSnapshot(),
+  resolveKeywordBindingAction,
   onRecord: (...args) => setImmediate(() => {
     try {
       recordAction(...args);
@@ -37,10 +38,13 @@ const storyRuntime = createStoryRuntime({
     }
   })
 });
-let storyMenuCache = null;
-let storyMenuUpdatedAt = 0;
-
-app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/public', express.static(path.join(__dirname, 'public'), {
+  setHeaders(res, filePath) {
+    if (filePath.includes(`${path.sep}generated${path.sep}`)) {
+      res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+    }
+  }
+}));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 function isLocalHost(req) {
@@ -112,147 +116,12 @@ function getSessionKey(event) {
   return event.source?.userId || event.source?.groupId || event.source?.roomId || 'anonymous';
 }
 
-function getStoryTriggerKeyword(store, story) {
-  return (store?.globalSettings?.triggerBindings || [])
-    .find((binding) => binding.storyId === story.id && `${binding.keyword || ''}`.trim())?.keyword || '';
-}
-
 function startTimer() {
   return process.hrtime.bigint();
 }
 
 function elapsedMs(start) {
   return Number(process.hrtime.bigint() - start) / 1e6;
-}
-
-async function buildStoryMenuMessages() {
-  const store = getHotStoreSnapshot();
-  if (
-    storyMenuCache &&
-    storyMenuCache.store === store &&
-    Date.now() - storyMenuUpdatedAt < 10000
-  ) {
-    return {
-      messages: storyMenuCache.messages,
-      cacheHit: true
-    };
-  }
-  const stories = (store.stories || [])
-    .map((story) => ({
-      story,
-      triggerKeyword: getStoryTriggerKeyword(store, story)
-    }))
-    .filter((entry) => entry.story?.startNodeId && entry.triggerKeyword)
-    .slice(0, 10);
-
-  if (!stories.length) {
-    const empty = [{
-      type: 'text',
-      text: '目前還沒有可閱讀的故事。'
-    }];
-    storyMenuCache = {
-      store,
-      messages: empty
-    };
-    storyMenuUpdatedAt = Date.now();
-    return {
-      messages: empty,
-      cacheHit: false
-    };
-  }
-
-  const bubbles = await Promise.all(stories.map(async ({ story, triggerKeyword }) => {
-    let imageUrl = '';
-    try {
-      const render = await buildRenderResult(store, story, story.startNodeId, publicBaseUrl, {
-        requirePublishedAssets: true,
-        usePublishedAssets: true
-      });
-      imageUrl = render.images?.[0]?.url || render.image?.url || render.models?.[0]?.renderedImageUrl || '';
-    } catch (error) {
-      console.error('[ERROR]', error);
-    }
-
-    const bodyContents = [
-      {
-        type: 'text',
-        text: story.title || '未命名故事',
-        weight: 'bold',
-        size: 'lg',
-        wrap: true,
-        color: '#2D241B'
-      },
-      {
-        type: 'text',
-        text: triggerKeyword,
-        size: 'sm',
-        wrap: true,
-        color: '#6D6255'
-      }
-    ];
-
-    return {
-      type: 'bubble',
-      size: 'mega',
-      ...(imageUrl ? {
-        hero: {
-          type: 'image',
-          url: imageUrl,
-          size: 'full',
-          aspectRatio: '16:27',
-          aspectMode: 'cover'
-        }
-      } : {}),
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        spacing: 'sm',
-        paddingAll: '18px',
-        backgroundColor: '#FFF8EF',
-        contents: bodyContents
-      },
-      footer: {
-        type: 'box',
-        layout: 'vertical',
-        paddingTop: '14px',
-        paddingBottom: '18px',
-        paddingStart: '18px',
-        paddingEnd: '18px',
-        backgroundColor: '#FFFDF8',
-        contents: [
-          {
-            type: 'button',
-            style: 'primary',
-            color: '#C8833D',
-            action: {
-              type: 'postback',
-              label: '開始閱讀',
-              data: triggerKeyword,
-              displayText: triggerKeyword
-            }
-          }
-        ]
-      }
-    };
-  }));
-
-  const messages = [{
-    type: 'flex',
-    altText: '繪本故事選單',
-    contents: {
-      type: 'carousel',
-      contents: bubbles
-    }
-  }];
-  storyMenuCache = {
-    store,
-    messages
-  };
-  storyMenuUpdatedAt = Date.now();
-  return {
-    messages,
-    cacheHit: false
-  };
 }
 
 function sanitizePayload(value) {
@@ -383,21 +252,6 @@ async function handleTextEvent(event) {
   const text = event.type === 'postback'
     ? `${event.postback?.data || ''}`
     : `${event.message?.text || ''}`;
-  if (text.trim() === '顯示繪本故事') {
-    return replyThenPush(event, async () => {
-      const menu = await buildStoryMenuMessages();
-      return {
-        mode: 'story-menu',
-        messages: menu.messages,
-        cacheHit: menu.cacheHit
-      };
-    }, {
-      kind: 'story-menu',
-      text,
-      sessionKey,
-      cacheHit: undefined
-    });
-  }
   return replyThenPush(event, () => storyRuntime.processTextInput({
     userId: sessionKey,
     text,

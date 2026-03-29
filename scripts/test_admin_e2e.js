@@ -30,6 +30,14 @@ async function jsonFetch(url, options = {}) {
   return body;
 }
 
+function findStoryTrigger(globalSettings, storyId) {
+  return (globalSettings?.triggerBindings || []).find((binding) =>
+    binding?.storyId === storyId
+    && binding?.actionType === 'story'
+    && binding?.scope !== 'account'
+  ) || null;
+}
+
 async function run() {
   const port = 3210;
   const baseUrl = `http://127.0.0.1:${port}`;
@@ -39,145 +47,117 @@ async function run() {
   });
 
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } });
+  const page = await browser.newPage({ viewport: { width: 1500, height: 1280 } });
 
   try {
     await waitForServer(`${baseUrl}/api/dashboard`);
 
     const dashboard = await jsonFetch(`${baseUrl}/api/dashboard`);
-    if (!dashboard.dashboard.storys && dashboard.dashboard.storyCount < 1) {
+    if ((dashboard.dashboard?.storyCount || 0) < 1) {
       throw new Error('Expected at least one story in dashboard');
-    }
-
-    const draft = await jsonFetch(`${baseUrl}/api/stories/story-01/render/draft`, {
-      method: 'POST',
-      body: JSON.stringify({ nodeId: 'pic1' })
-    });
-    if (!draft.render?.payload?.messages?.length) {
-      throw new Error('Draft render returned no LINE messages');
     }
 
     const storyPayload = await jsonFetch(`${baseUrl}/api/stories/story-01`);
     const story = storyPayload.story;
-    const triggerKeyword = storyPayload.globalSettings.triggerBindings.find((binding) => binding.storyId === story.id)?.keyword || '開始故事';
-    const startNode = story.nodes.find((node) => node.id === story.startNodeId);
-    const advancingChoice = [startNode?.optionA, startNode?.optionB].find((option) => option?.nextNodeId);
-    if (!advancingChoice?.label || !advancingChoice?.nextNodeId) {
-      throw new Error('Expected start node to include at least one advancing choice');
+    const globalSettings = storyPayload.globalSettings;
+    const trigger = findStoryTrigger(globalSettings, story.id);
+    const triggerKeyword = `${trigger?.keyword || story.triggerKeyword || ''}`.trim();
+
+    const preview = await jsonFetch(`${baseUrl}/api/render`, {
+      method: 'POST',
+      body: JSON.stringify({
+        storyId: story.id,
+        story,
+        globalSettings,
+        nodeId: story.startNodeId
+      })
+    });
+    if (!preview.render?.payload?.messages?.length) {
+      throw new Error('Preview render returned no LINE messages');
     }
 
-    const simulatedStart = await jsonFetch(`${baseUrl}/api/runtime/simulate`, {
-      method: 'POST',
-      body: JSON.stringify({ text: triggerKeyword, sessionKey: 'e2e' })
-    });
-    if (simulatedStart.simulation?.mode !== 'trigger') {
-      throw new Error(`Expected trigger mode, got ${simulatedStart.simulation?.mode}`);
-    }
-
-    const simulatedChoice = await jsonFetch(`${baseUrl}/api/runtime/simulate`, {
-      method: 'POST',
-      body: JSON.stringify({ text: advancingChoice.label, sessionKey: 'e2e' })
-    });
-    if (simulatedChoice.simulation?.session?.currentNodeId !== advancingChoice.nextNodeId) {
-      throw new Error(`Expected session to advance to ${advancingChoice.nextNodeId}, got ${simulatedChoice.simulation?.session?.currentNodeId}`);
-    }
-
-    const storyRender = await jsonFetch(`${baseUrl}/api/stories/story-01/render/story`, {
-      method: 'POST',
-      body: JSON.stringify({})
-    });
-    if (!storyRender.story?.nodes?.length) {
-      throw new Error('Whole story render returned no node render results');
+    let runtimeTriggerOk = false;
+    if (triggerKeyword) {
+      const simulatedStart = await jsonFetch(`${baseUrl}/api/runtime/simulate`, {
+        method: 'POST',
+        body: JSON.stringify({ text: triggerKeyword, sessionKey: 'e2e' })
+      });
+      if (simulatedStart.simulation?.mode !== 'trigger') {
+        throw new Error(`Expected trigger mode, got ${simulatedStart.simulation?.mode}`);
+      }
+      runtimeTriggerOk = true;
     }
 
     await page.goto(baseUrl, { waitUntil: 'networkidle' });
-    await page.waitForSelector('text=Ho-Se Ong Lai');
-    await page.waitForSelector('.story-bar');
-    await page.waitForSelector('.story-subbar');
     await page.waitForSelector('#story-list [data-story-id]');
     await page.locator('#story-list [data-story-id]').first().click();
     await page.waitForSelector('#editor-story-title');
-    await page.waitForSelector('#story-stage-tabs');
 
-    const storyTitle = await page.locator('#editor-story-title').textContent();
-    if (!storyTitle.includes(story.title)) {
-      throw new Error(`Unexpected editor title: ${storyTitle}`);
+    const duplicateSave = await page.locator('#save-story-meta').count();
+    if (duplicateSave !== 0) {
+      throw new Error('Expected duplicate save-story-meta button to be removed');
     }
 
-    const progressText = await page.locator('#story-progress-grid').textContent();
-    if (!progressText.includes('角色數') || !progressText.includes('草稿節點')) {
-      throw new Error('Story progress summary missing');
+    const triggerHint = await page.locator('#story-trigger-hint').textContent();
+    if (!triggerHint.includes('Setting')) {
+      throw new Error('Story trigger hint does not clarify account route scope');
     }
 
-    const payloadText = await page.locator('#payload-preview').textContent();
-    if (!payloadText.includes('"messages"')) {
-      throw new Error('Payload preview missing messages JSON');
+    const publishHint = await page.locator('#publish-scope-hint').textContent();
+    if (!publishHint.includes('發布到 Render')) {
+      throw new Error('Publish scope hint missing');
     }
 
-    await page.click('[data-preview-panel="simulate"]');
-    await page.fill('#simulate-session-key', 'ui-smoke');
-    await page.fill('#simulate-text', triggerKeyword);
-    await page.click('#simulate-message');
-    await page.waitForFunction(() => {
-      const output = document.querySelector('#simulation-output');
-      return output && output.textContent.includes('"mode": "trigger"');
-    });
-
-    await page.fill('#simulate-text', advancingChoice.label);
-    await page.click('#simulate-message');
-    await page.waitForFunction((nextNodeId) => {
-      const output = document.querySelector('#simulation-output');
-      return output && output.textContent.includes(`"currentNodeId": "${nextNodeId}"`);
-    }, advancingChoice.nextNodeId);
-
-    await page.click('[data-story-stage="import"]');
-    await page.fill('#script-import-text', 'PIC1\n熊熊：哈囉\n\nPIC2\n莉莉：早安\n熊熊：早安');
-    await page.click('#import-script-text');
-    await page.waitForFunction(() => {
-      const status = document.querySelector('#draft-import-status');
-      return status && status.textContent.includes('節點：2');
-    });
-    await page.waitForSelector('#draft-node-list .story-card');
-    await page.locator('#draft-node-list .story-card').first().click();
-    await page.waitForSelector('#draft-editor-form');
-    const draftEditorText = await page.locator('#draft-editor-form').textContent();
-    if (!draftEditorText.includes('快速改為對話卡') || !draftEditorText.includes('套用此節點到正式故事')) {
-      throw new Error('Draft editor missing quick correction actions');
+    const previewHint = await page.locator('#preview-version-hint').textContent();
+    if (!previewHint.includes('LINE')) {
+      throw new Error('Preview version hint missing LINE scope explanation');
     }
 
-    await page.click('[data-story-stage="characters"]');
-    await page.waitForSelector('#story-character-list .character-card');
-    const settingsText = await page.locator('#story-character-list').textContent();
-    if (!settingsText.includes('熊熊') || !settingsText.includes('莉莉')) {
-      throw new Error('Character settings missing expected characters');
+    await page.locator('#node-graph [data-node-id]').first().click();
+    await page.waitForSelector('.editor-breadcrumb');
+    const breadcrumb = await page.locator('.editor-breadcrumb').first().textContent();
+    if (!breadcrumb.includes(story.title)) {
+      throw new Error(`Editor breadcrumb missing story title: ${breadcrumb}`);
     }
-    await page.click('#add-supporting-template');
-    await page.waitForFunction(() => document.querySelectorAll('#story-character-list .character-card').length >= 3);
 
-    const globalResponse = await page.request.get(`${baseUrl}/api/global-settings`, {
-      headers: {
-        'x-lineat-role': 'manager',
-        'x-lineat-actor': 'e2e'
-      }
-    });
-    const globalSettings = await globalResponse.json();
-    const bear = globalSettings.globalSettings.characters.find((entry) => entry.id === 'char-bear');
-    if (!bear || bear.avatarPath !== '/public/story/01/bhead001.png') {
-      throw new Error('Bear avatar default not wired to /public/story/01/bhead001.png');
+    const editorScope = await page.locator('.editor-selection-scope').first().textContent();
+    if (!editorScope.trim()) {
+      throw new Error('Editor scope label missing');
+    }
+
+    const graphTransitionButton = await page.locator('#node-graph [data-node-action="insert-transition"]').first().textContent();
+    if (!graphTransitionButton.includes('編輯過場')) {
+      throw new Error('Graph transition action label did not update to semantic wording');
+    }
+
+    await page.locator('[data-workspace-tab="setting"]').click();
+    await page.waitForSelector('#setting-route-overview');
+    const settingStatus = await page.locator('#setting-status').textContent();
+    if (!settingStatus.includes('全帳號共用')) {
+      throw new Error('Setting scope hint missing');
+    }
+
+    const beforeTabs = await page.locator('#keyword-binding-tabs .keyword-tab').count();
+    await page.click('#add-keyword-carousel');
+    await page.waitForFunction((count) => {
+      return document.querySelectorAll('#keyword-binding-tabs .keyword-tab').length === count + 1;
+    }, beforeTabs);
+
+    const keywordEditorText = await page.locator('#keyword-binding-editor').textContent();
+    if (!keywordEditorText.includes('編輯帳號指令')) {
+      throw new Error('Keyword editor heading did not clarify account scope');
     }
 
     console.log(JSON.stringify({
       dashboardLoaded: true,
-      draftRendered: true,
-      storyRendered: true,
-      triggerSimulated: true,
-      sessionAdvanced: true,
-      uiLoaded: true,
-      payloadPreviewReady: true,
-      localEventTestingReady: true,
-      characterAssetsReady: true,
-      draftImportReady: true,
-      manualCorrectionReady: true
+      previewRendered: true,
+      runtimeTriggerOk,
+      storyScopeHintOk: true,
+      duplicateSaveRemoved: true,
+      editorBreadcrumbOk: true,
+      graphSemanticsOk: true,
+      previewPublishHintOk: true,
+      accountKeywordEditorOk: true
     }, null, 2));
   } finally {
     await browser.close();

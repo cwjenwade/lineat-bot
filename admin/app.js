@@ -15,11 +15,14 @@
     isDirty: false,
     pendingAction: '',
     lastActionResult: '',
+    workspaceTab: 'story',
     storyStage: 'final',
     previewPanel: 'visual',
     previewIndex: 0,
     justDraggedNodeId: '',
     currentVirtualTransitionId: '',
+    currentKeywordBindingId: '',
+    settingStatus: '這裡編輯的是全帳號共用 trigger route。',
     graphLayoutOverrides: {}
   };
 
@@ -40,6 +43,11 @@
 
   function cacheDom() {
     dom.refreshAll = document.getElementById('refresh-all');
+    dom.heroStatus = document.getElementById('hero-status');
+    dom.heroApproval = document.getElementById('hero-approval');
+    dom.heroRender = document.getElementById('hero-render');
+    dom.workspaceTabs = Array.from(document.querySelectorAll('[data-workspace-tab]'));
+    dom.pageSections = Array.from(document.querySelectorAll('[data-page-tab]'));
 
     dom.storyCount = document.getElementById('story-count');
     dom.newStoryTitle = document.getElementById('new-story-title');
@@ -53,8 +61,19 @@
     dom.storyDescriptionInput = document.getElementById('story-description-input');
     dom.storyStartNode = document.getElementById('story-start-node');
     dom.storyTriggerInput = document.getElementById('story-trigger-input');
+    dom.storyTriggerHint = document.getElementById('story-trigger-hint');
     dom.storyProgressGrid = document.getElementById('story-progress-grid');
-    dom.saveStoryMeta = document.getElementById('save-story-meta');
+    dom.storyOverviewStatus = document.getElementById('story-overview-status');
+    dom.storyPublishSummary = document.getElementById('story-publish-summary');
+    dom.publishScopeHint = document.getElementById('publish-scope-hint');
+    dom.settingStatus = document.getElementById('setting-status');
+    dom.settingRouteOverview = document.getElementById('setting-route-overview');
+    dom.keywordBindingTabs = document.getElementById('keyword-binding-tabs');
+    dom.keywordBindingEditor = document.getElementById('keyword-binding-editor');
+    dom.addKeywordStory = document.getElementById('add-keyword-story');
+    dom.addKeywordCarousel = document.getElementById('add-keyword-carousel');
+    dom.addKeywordTransition = document.getElementById('add-keyword-transition');
+    dom.saveAccountSettings = document.getElementById('save-account-settings');
     dom.storyStageTabs = Array.from(document.querySelectorAll('[data-story-stage]'));
     dom.storyStagePanels = {
       characters: document.getElementById('story-stage-characters'),
@@ -92,6 +111,7 @@
     dom.previewStatus = document.getElementById('preview-status');
     dom.scenePreview = document.getElementById('scene-preview');
     dom.previewCounter = document.getElementById('preview-counter');
+    dom.previewVersionHint = document.getElementById('preview-version-hint');
     dom.previewOutputMeta = document.getElementById('preview-output-meta');
     dom.payloadPreview = document.getElementById('payload-preview');
     dom.validateNode = document.getElementById('validate-node');
@@ -110,7 +130,11 @@
   }
 
   function bindStaticEvents() {
-    dom.refreshAll.addEventListener('click', reloadAll);
+    if (dom.refreshAll) dom.refreshAll.addEventListener('click', reloadAll);
+    dom.workspaceTabs.forEach((button) => button.addEventListener('click', () => {
+      state.workspaceTab = button.dataset.workspaceTab || 'story';
+      render();
+    }));
     dom.createStory.addEventListener('click', handleCreateStory);
     dom.duplicateStory.addEventListener('click', handleDuplicateStory);
     dom.deleteStory.addEventListener('click', handleDeleteStory);
@@ -122,11 +146,12 @@
     dom.matchUnboundRoles.addEventListener('click', handleMatchUnboundRoles);
     dom.saveDraftImport.addEventListener('click', handleSaveDraftImport);
     dom.applyAllDraft.addEventListener('click', handleApplyAllDraft);
-    dom.saveStory.addEventListener('click', handleSaveStory);
-    dom.publishAssets.addEventListener('click', handlePublishAssets);
-    dom.deployRender.addEventListener('click', handleDeployRender);
-    dom.saveStoryMeta.addEventListener('click', handleSaveStory);
-    dom.validateStory.addEventListener('click', handleValidateStory);
+    if (dom.saveStory) dom.saveStory.addEventListener('click', handleSaveStory);
+    if (dom.publishAssets) dom.publishAssets.addEventListener('click', handlePublishAssets);
+    if (dom.deployRender) dom.deployRender.addEventListener('click', handleDeployRender);
+    if (dom.heroApproval) dom.heroApproval.addEventListener('click', handlePublishAssets);
+    if (dom.heroRender) dom.heroRender.addEventListener('click', handleDeployRender);
+    if (dom.validateStory) dom.validateStory.addEventListener('click', handleValidateStory);
     if (dom.testTrigger) dom.testTrigger.addEventListener('click', handleTestTrigger);
     dom.validateNode.addEventListener('click', handleValidateNode);
     if (dom.testNode) dom.testNode.addEventListener('click', handleTestNode);
@@ -138,6 +163,10 @@
     dom.storyDescriptionInput.addEventListener('input', () => updateStoryField('description', dom.storyDescriptionInput.value));
     dom.storyTriggerInput.addEventListener('input', () => updateStoryTrigger(dom.storyTriggerInput.value));
     dom.storyStartNode.addEventListener('change', () => updateStoryField('startNodeId', dom.storyStartNode.value));
+    if (dom.addKeywordStory) dom.addKeywordStory.addEventListener('click', () => handleAddKeywordBinding('story'));
+    if (dom.addKeywordCarousel) dom.addKeywordCarousel.addEventListener('click', () => handleAddKeywordBinding('carousel'));
+    if (dom.addKeywordTransition) dom.addKeywordTransition.addEventListener('click', () => handleAddKeywordBinding('transition'));
+    if (dom.saveAccountSettings) dom.saveAccountSettings.addEventListener('click', handleSaveAccountSettings);
     dom.storyStageTabs.forEach((button) => button.addEventListener('click', () => {
       state.storyStage = button.dataset.storyStage;
       renderStories();
@@ -174,6 +203,28 @@
   function createLocalId(prefix = 'item') {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   }
+
+  const keywordRouteManager = window.LineatAdminKeywordRoutes.createManager({
+    state,
+    dom,
+    api,
+    createLocalId,
+    currentStory,
+    render,
+    reloadAll,
+    clearDirty,
+    setPendingAction,
+    markDirty,
+    nextNodeOptions,
+    sectionHeading,
+    createField,
+    input,
+    select,
+    textarea,
+    imageInput,
+    createBlockingNotice,
+    staticValue
+  });
 
   function snapToBlockGrid(value, minimum = 0) {
     return Math.max(minimum, Math.round(value / BLOCK_GRID_SIZE) * BLOCK_GRID_SIZE);
@@ -316,9 +367,7 @@
   }
 
   function defaultSpeakerId() {
-    return currentStory()?.characters?.[0]?.id
-      || state.globalSettings?.characters?.[0]?.id
-      || '';
+    return currentStory()?.characters?.[0]?.id || '';
   }
 
   function createLocalNodeTemplate(type = 'dialogue', order = 1) {
@@ -326,7 +375,7 @@
       id: createLocalId(type),
       title: type === 'narration' ? `Narration ${order}` : `Scene ${order}`,
       type,
-      imagePath: '/public/story/01/image01.png',
+      imagePath: '',
       text: '在這裡輸入內容。',
       previewFont: 'default',
       lineTextSize: 'lg',
@@ -435,12 +484,43 @@
   }
 
   function currentTriggerBinding() {
-    if (!state.globalSettings || !state.currentStoryId) return null;
-    return state.globalSettings.triggerBindings.find((binding) => binding.storyId === state.currentStoryId) || null;
+    return keywordRouteManager.currentTriggerBinding();
   }
 
   function currentTriggerKeyword() {
-    return `${currentTriggerBinding()?.keyword || ''}`.trim();
+    return keywordRouteManager.currentTriggerKeyword();
+  }
+
+  function currentStoryTriggerHint() {
+    return keywordRouteManager.currentStoryTriggerHint();
+  }
+
+  function keywordBindingActionType(binding) {
+    return keywordRouteManager.keywordBindingActionType(binding);
+  }
+
+  function keywordBindingScope(binding) {
+    return keywordRouteManager.keywordBindingScope(binding);
+  }
+
+  function allKeywordBindings() {
+    return state.globalSettings?.triggerBindings || [];
+  }
+
+  function accountKeywordBindings() {
+    return keywordRouteManager.accountKeywordBindings();
+  }
+
+  function findKeywordBinding(bindingId = '') {
+    return keywordRouteManager.findKeywordBinding(bindingId);
+  }
+
+  function findStoryById(storyId = '') {
+    return keywordRouteManager.findStoryById(storyId);
+  }
+
+  function storyPublishedAssetCount(story = currentStory()) {
+    return Object.keys(story?.publishedAssets || {}).length;
   }
 
   function currentPreviewModel() {
@@ -586,6 +666,53 @@
       pageIndex: -1,
       page: null
     };
+  }
+
+  function describeEditorScope(node, context, virtualTransition = currentVirtualTransition()) {
+    const breadcrumb = [currentStory()?.title || '未命名故事', node?.title || node?.id || '未命名節點'];
+    let title = node?.title || node?.id || '未命名節點';
+    let meta = '正在編輯節點主卡';
+    let scope = '節點主卡';
+    let pills = ['Node'];
+
+    if (virtualTransition && virtualTransition.sourceNodeId === node?.id) {
+      const branchLabel = virtualTransition.branch
+        ? `選項 ${virtualTransition.branch} 過場`
+        : '下一幕過場';
+      breadcrumb.push(branchLabel);
+      title = branchLabel;
+      meta = virtualTransition.branch
+        ? `這裡編輯的是選項 ${virtualTransition.branch} 的過場映射，內容會回寫到原本選項欄位。`
+        : '這裡編輯的是節點的下一幕過場映射，內容會回寫到目前節點。';
+      scope = '過場映射';
+      pills = ['Transition'];
+    } else if (context.targetType === 'page' && context.page) {
+      breadcrumb.push(`第 ${context.pageIndex + 1} 頁`);
+      title = context.page.title || `第 ${context.pageIndex + 1} 頁`;
+      meta = `正在編輯第 ${context.pageIndex + 1} 頁，這裡只會影響目前頁面。`;
+      scope = '頁面';
+      pills = ['Page', describeNodeType(context.page.cardType || 'dialogue')];
+    } else if (context.targetType === 'choice') {
+      breadcrumb.push('選項卡');
+      title = node?.prompt || '選項卡';
+      meta = '正在編輯選項卡與分支去向。這裡不會改動前面的多頁內容。';
+      scope = '選項卡';
+      pills = ['Choice'];
+    }
+
+    return { breadcrumb, title, meta, scope, pills };
+  }
+
+  function currentPreviewVersionHint() {
+    const story = currentStory();
+    if (!story) return '目前預覽的是編輯版；LINE 顯示的是最後一次已發布到 Render 的版本。';
+    if (!storyPublishedAssetCount(story)) {
+      return '目前還沒有正式發布圖片。這裡看到的是編輯版，LINE 不會與此一致。';
+    }
+    if (state.isDirty) {
+      return '目前預覽包含尚未儲存的改動。LINE 仍顯示最後一次已發布到 Render 的版本。';
+    }
+    return '目前預覽反映最新編輯版；只有在完成「儲存故事 → 產生部署圖片 → 發布到 Render」後，LINE 才會與此一致。';
   }
 
   function resetPreviewSelection() {
@@ -745,6 +872,12 @@
   function updateStoryField(field, value) {
     if (!currentStory()) return;
     state.storyDetail.story[field] = value;
+    if (field === 'startNodeId') {
+      const binding = currentTriggerBinding();
+      if (binding) {
+        binding.startNodeId = value;
+      }
+    }
     markDirty('故事設定已修改，尚未儲存。');
     render();
     schedulePreview();
@@ -752,6 +885,7 @@
 
   function updateStoryTrigger(keyword) {
     if (!state.globalSettings || !currentStory()) return;
+    state.storyDetail.story.triggerKeyword = keyword;
     const binding = currentTriggerBinding();
     if (binding) {
       binding.keyword = keyword;
@@ -759,7 +893,11 @@
     } else {
       state.globalSettings.triggerBindings.push({
         id: `trigger-${Date.now()}`,
+        scope: 'story',
         keyword,
+        actionType: 'story',
+        label: '開始故事',
+        messageText: '',
         storyId: currentStory().id,
         startNodeId: currentStory().startNodeId
       });
@@ -768,14 +906,63 @@
     render();
   }
 
+  function createKeywordBindingDraft(actionType = 'story') {
+    return keywordRouteManager.createKeywordBindingDraft(actionType);
+  }
+
+  function handleAddKeywordBinding(actionType = 'story') {
+    return keywordRouteManager.handleAddKeywordBinding(actionType);
+  }
+
+  function updateKeywordBindingField(bindingId, field, value) {
+    return keywordRouteManager.updateKeywordBindingField(bindingId, field, value);
+  }
+
+  function deleteKeywordBinding(bindingId) {
+    return keywordRouteManager.deleteKeywordBinding(bindingId);
+  }
+
+  function addCarouselItem(bindingId) {
+    return keywordRouteManager.addCarouselItem(bindingId);
+  }
+
+  function updateCarouselItemField(bindingId, itemId, field, value) {
+    return keywordRouteManager.updateCarouselItemField(bindingId, itemId, field, value);
+  }
+
+  function moveCarouselItem(bindingId, itemId, direction) {
+    return keywordRouteManager.moveCarouselItem(bindingId, itemId, direction);
+  }
+
+  function removeCarouselItem(bindingId, itemId) {
+    return keywordRouteManager.removeCarouselItem(bindingId, itemId);
+  }
+
+  async function handleSaveAccountSettings() {
+    return keywordRouteManager.handleSaveAccountSettings();
+  }
+
   async function handleSaveStory() {
     const story = currentStory();
     if (!story) return;
+    story.triggerKeyword = currentTriggerKeyword();
+    if (story.triggerKeyword && !currentTriggerBinding()) {
+      state.globalSettings.triggerBindings.push({
+        id: `trigger-${Date.now()}`,
+        scope: 'story',
+        keyword: story.triggerKeyword,
+        actionType: 'story',
+        label: '開始故事',
+        messageText: '',
+        storyId: story.id,
+        startNodeId: story.startNodeId
+      });
+    }
     const blocker = currentRenderBlocker();
     if (blocker) {
       state.previewStatus = blocker;
       state.lastActionResult = 'blocked';
-      renderPreviewOnly();
+      render();
       return;
     }
     setPendingAction('save');
@@ -798,7 +985,7 @@
     } catch (error) {
       state.previewStatus = `儲存失敗：${error.message}`;
       state.lastActionResult = 'error';
-      renderPreviewOnly();
+      render();
       throw error;
     } finally {
       setPendingAction('');
@@ -983,6 +1170,7 @@
     state.previewStatus = '正在產生部署圖片...';
     render();
     try {
+      await handleSaveStory();
       const result = await api(`/stories/${story.id}/publish-assets`, {
         method: 'POST'
       });
@@ -1286,14 +1474,22 @@
   }
 
   function render() {
+    renderWorkspaceTabs();
+    renderSettingOverview();
+    renderSettingEditor();
     renderStories();
   }
 
-  function renderStories() {
-    dom.storyStageTabs.forEach((button) => button.classList.toggle('active', button.dataset.storyStage === state.storyStage));
-    Object.entries(dom.storyStagePanels).forEach(([key, panel]) => {
-      if (panel) panel.classList.toggle('active', key === state.storyStage);
+  function renderWorkspaceTabs() {
+    dom.workspaceTabs.forEach((button) => {
+      button.classList.toggle('active', button.dataset.workspaceTab === state.workspaceTab);
     });
+    dom.pageSections.forEach((section) => {
+      section.classList.toggle('active', section.dataset.pageTab === state.workspaceTab);
+    });
+  }
+
+  function renderStories() {
     dom.storyCount.textContent = `${state.stories.length} 個故事`;
     dom.storyList.innerHTML = state.stories.map((story, index) => `
       <button class="story-tab-pill ${story.id === state.currentStoryId ? 'active' : ''}" data-story-id="${story.id}">
@@ -1319,13 +1515,14 @@
       dom.editorStoryTitle.textContent = '未選擇故事';
       dom.editorStoryMeta.textContent = '';
       dom.storyProgressGrid.innerHTML = '';
+      if (dom.storyOverviewStatus) dom.storyOverviewStatus.innerHTML = '';
+      if (dom.storyPublishSummary) dom.storyPublishSummary.innerHTML = '';
       dom.nodeGraph.innerHTML = '';
       dom.nodeEditorEmpty.classList.remove('hidden');
       dom.nodeEditorShell.classList.add('hidden');
       return;
     }
 
-    const triggerBinding = currentTriggerBinding();
     const triggerKeyword = currentTriggerKeyword();
     const blockerReason = firstDialogueBlocker(story);
     const dirtyLabel = state.pendingAction
@@ -1338,10 +1535,12 @@
             ? '上一個操作失敗'
             : '同步中';
     dom.editorStoryTitle.textContent = story.title;
-    dom.editorStoryMeta.textContent = `start: ${story.startNodeId || '未設定'} / trigger: ${triggerBinding?.keyword || '未設定'} / 狀態: ${dirtyLabel}`;
+    dom.editorStoryMeta.textContent = `start: ${story.startNodeId || '未設定'} / trigger: ${triggerKeyword || '未設定'} / 狀態: ${dirtyLabel}`;
     dom.storyTitleInput.value = story.title || '';
     dom.storyDescriptionInput.value = story.description || '';
-    dom.storyTriggerInput.value = triggerBinding?.keyword || '';
+    dom.storyTriggerInput.value = triggerKeyword || '';
+    dom.storyTriggerInput.title = '這裡只編輯目前故事自己的啟動 keyword，不會改動帳號共用指令。';
+    if (dom.storyTriggerHint) dom.storyTriggerHint.textContent = currentStoryTriggerHint();
     const previewContext = currentPreviewContext();
     const isPageEditing = previewContext.targetType === 'page' && previewContext.node?.pages?.length;
     dom.moduleButtons.forEach((button) => {
@@ -1356,37 +1555,46 @@
         button.textContent = '＋ 選項卡';
         button.title = '新增新的選項節點。';
       } else if (type === 'transition') {
-        button.textContent = '＋ 過場';
+        button.textContent = '編輯過場';
         button.title = story.nodes.find((node) => node.id === state.currentNodeId)?.type === 'choice'
-          ? '為目前這張選項卡開啟選後過場文案。'
-          : '為目前節點開啟下一幕過場文案。';
+          ? '開啟目前選項卡的選後過場欄位，不會新增獨立節點。'
+          : '開啟目前節點的下一幕過場欄位，不會新增獨立節點。';
       } else if (type === 'carousel') {
         button.textContent = '＋ 多頁訊息';
         button.title = '新增新的多頁節點。';
       }
     });
-    dom.saveStory.disabled = Boolean(currentBlocker);
-    dom.saveStoryMeta.disabled = Boolean(currentBlocker);
-    dom.publishAssets.disabled = hasDialogueBlockers;
-    dom.deployRender.disabled = hasDialogueBlockers;
+    if (dom.saveStory) dom.saveStory.disabled = Boolean(currentBlocker);
+    if (dom.publishAssets) dom.publishAssets.disabled = hasDialogueBlockers;
+    if (dom.deployRender) dom.deployRender.disabled = hasDialogueBlockers;
+    if (dom.heroApproval) dom.heroApproval.disabled = hasDialogueBlockers;
+    if (dom.heroRender) dom.heroRender.disabled = hasDialogueBlockers;
     dom.validateNode.disabled = Boolean(currentBlocker);
-    dom.validateStory.disabled = hasDialogueBlockers || state.pendingAction === 'validate-story';
+    if (dom.validateStory) dom.validateStory.disabled = hasDialogueBlockers || state.pendingAction === 'validate-story';
     dom.simulateMessage.disabled = state.pendingAction === 'simulate';
     dom.simulateReset.disabled = state.pendingAction === 'simulate-reset';
-    dom.saveStory.textContent = state.pendingAction === 'save' ? '儲存中...' : '儲存故事';
-    dom.saveStoryMeta.textContent = state.pendingAction === 'save' ? '儲存中...' : '儲存故事';
-    dom.publishAssets.textContent = state.pendingAction === 'publish-assets' ? '產圖中...' : '產生部署圖片';
-    dom.deployRender.textContent = state.pendingAction === 'deploy-render' ? '發布中...' : '發布到 Render';
-    dom.validateStory.textContent = state.pendingAction === 'validate-story' ? '檢查中...' : '檢查故事';
-    dom.validateNode.textContent = state.pendingAction === 'validate-node' ? '檢查中...' : 'Validate 單卡';
+    if (dom.saveStory) dom.saveStory.textContent = state.pendingAction === 'save' ? '儲存中...' : '儲存故事';
+    if (dom.publishAssets) dom.publishAssets.textContent = state.pendingAction === 'publish-assets' ? '產圖中...' : '產生部署圖片';
+    if (dom.deployRender) dom.deployRender.textContent = state.pendingAction === 'deploy-render' ? '發布中...' : '發布到 Render';
+    if (dom.heroApproval) dom.heroApproval.textContent = state.pendingAction === 'publish-assets' ? 'Approval...' : 'Approval';
+    if (dom.heroRender) dom.heroRender.textContent = state.pendingAction === 'deploy-render' ? 'Render...' : 'Render';
+    if (dom.validateStory) dom.validateStory.textContent = state.pendingAction === 'validate-story' ? '檢查中...' : '檢查故事';
+    dom.validateNode.textContent = state.pendingAction === 'validate-node' ? '檢查中...' : '驗證目前節點';
     dom.simulateMessage.textContent = state.pendingAction === 'simulate' ? '執行中...' : '送出文字事件';
     dom.simulateReset.textContent = state.pendingAction === 'simulate-reset' ? '重置中...' : '重置 session';
-    dom.saveStory.title = currentBlocker || '';
-    dom.saveStoryMeta.title = currentBlocker || '';
-    dom.publishAssets.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
-    dom.deployRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
-    dom.validateStory.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '';
-    dom.validateNode.title = currentBlocker || '';
+    if (dom.saveStory) dom.saveStory.title = currentBlocker || '儲存整個故事，包括目前節點、頁面與故事啟動 keyword。';
+    if (dom.publishAssets) dom.publishAssets.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '重建整個故事的正式圖片，不只目前節點。';
+    if (dom.deployRender) dom.deployRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '把最後一次產圖結果部署到正式 Render。';
+    if (dom.heroApproval) dom.heroApproval.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '重建整個故事的正式圖片，不只目前節點。';
+    if (dom.heroRender) dom.heroRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '把最後一次產圖結果部署到正式 Render。';
+    if (dom.validateStory) dom.validateStory.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '檢查整個故事的節點結構與 LINE payload。';
+    dom.validateNode.title = currentBlocker || '只驗證目前節點的 payload，不是整個故事。';
+    dom.simulateMessage.title = '使用目前輸入文字直接跑 runtime，驗證流程與 session。';
+    dom.simulateReset.title = '清空目前模擬用 session，不會影響正式 LINE 使用者。';
+    if (dom.publishScopeHint) dom.publishScopeHint.textContent = '儲存故事只會更新編輯版；產生部署圖片會重建整個故事的正式圖片；發布到 Render 會把最後一次產圖結果上線。';
+    if (dom.heroStatus) {
+      dom.heroStatus.textContent = state.previewStatus || '尚未載入節點。';
+    }
     if (!dom.simulateText.value || dom.simulateText.value === '101') {
       dom.simulateText.value = triggerKeyword || '';
     }
@@ -1397,6 +1605,7 @@
     dom.draftImportStatus.textContent = story.draftImport?.importedAt
       ? `狀態：${story.draftImport.status} / 節點：${story.draftImport.nodes.length} / 未綁定角色：${story.draftImport.unboundRoles.length}`
       : '尚未匯入劇本。';
+    renderStoryOverview(story);
     renderStoryProgress(story);
     state.currentDraftNodeId = state.currentDraftNodeId && story.draftImport?.nodes?.some((node) => node.id === state.currentDraftNodeId)
       ? state.currentDraftNodeId
@@ -1426,6 +1635,50 @@
         <strong>${escapeHtml(value)}</strong>
       </article>
     `).join('');
+  }
+
+  function renderStoryOverview(story) {
+    if (!dom.storyOverviewStatus || !dom.storyPublishSummary) return;
+    const publishedCount = storyPublishedAssetCount(story);
+    const statusItems = [];
+    if (!currentTriggerKeyword()) statusItems.push('未設定 trigger');
+    if (!publishedCount) statusItems.push('未發布');
+    if ((story.nodes || []).length === 1) statusItems.push('尚未建立內容');
+
+    dom.storyOverviewStatus.innerHTML = statusItems.length
+      ? statusItems.map((item) => `<span class="pill warn">${escapeHtml(item)}</span>`).join('')
+      : '<span class="pill good">可編輯</span>';
+
+    dom.storyPublishSummary.innerHTML = `
+      <article class="progress-card">
+        <div class="subtle">正式圖片</div>
+        <strong>${escapeHtml(publishedCount)}</strong>
+        <div class="field-hint">這是目前已發布到 LINE / Render 的圖片數量。</div>
+      </article>
+      <article class="progress-card">
+        <div class="subtle">故事啟動 Keyword</div>
+        <strong>${escapeHtml(currentTriggerKeyword() || '未設定')}</strong>
+        <div class="field-hint">這裡只代表目前故事的啟動 keyword，不含帳號共用指令。</div>
+      </article>
+      <article class="progress-card">
+        <div class="subtle">開始節點</div>
+        <strong>${escapeHtml(story.startNodeId || '未設定')}</strong>
+        <div class="field-hint">故事開始時會直接進到這個節點。</div>
+      </article>
+      <article class="progress-card">
+        <div class="subtle">Preview / LINE</div>
+        <strong>${escapeHtml(state.isDirty ? '未同步' : '待發布')}</strong>
+        <div class="field-hint">${escapeHtml(currentPreviewVersionHint())}</div>
+      </article>
+    `;
+  }
+
+  function renderSettingOverview() {
+    return keywordRouteManager.renderSettingOverview();
+  }
+
+  function renderSettingEditor() {
+    return keywordRouteManager.renderSettingEditor();
   }
 
   function renderStoryCharacters(story) {
@@ -1874,22 +2127,36 @@
         const section = document.createElement('section');
         section.className = 'panel';
         section.style.padding = '14px';
+        const isTextOnlyNarration = isTextTriptychCard(page.cardType || 'dialogue');
         const pageGrid = document.createElement('div');
         pageGrid.className = 'field-grid';
         pageGrid.append(
           createField('頁面標題', input(page.title || '', (value) => updateDraftPageField(pageIndex, 'title', value))),
           createField('頁面卡型', select([
             ['dialogue', '對話卡'],
-            ['narration', '旁白卡']
+            ['narration', '旁白卡'],
+            ['narration-triptych', '純文字三段旁白卡']
           ], page.cardType || 'dialogue', (value) => updateDraftPageField(pageIndex, 'cardType', value))),
-          createField('頁面圖片', imageInput(page.imagePath, (value) => updateDraftPageField(pageIndex, 'imagePath', value))),
-          createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updateDraftPageField(pageIndex, 'speakerCharacterId', value))),
-          createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updateDraftPageField(pageIndex, 'companionCharacterId', value))),
           createField('中文字體', select(fontOptions(), page.previewFont || 'default', (value) => updateDraftPageField(pageIndex, 'previewFont', value))),
           createField('字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updateDraftPageField(pageIndex, 'lineTextSize', value)))
         );
+        if (!isTextOnlyNarration) {
+          pageGrid.appendChild(createField('頁面圖片', imageInput(page.imagePath, (value) => updateDraftPageField(pageIndex, 'imagePath', value))));
+        }
+        if ((page.cardType || 'dialogue') === 'dialogue') {
+          pageGrid.append(
+            createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updateDraftPageField(pageIndex, 'speakerCharacterId', value))),
+            createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updateDraftPageField(pageIndex, 'companionCharacterId', value)))
+          );
+        }
         pageGrid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updateDraftPageField(pageIndex, 'text', value)), 'single'));
         section.appendChild(pageGrid);
+        if (isTextOnlyNarration) {
+          const hint = document.createElement('div');
+          hint.className = 'subtle';
+          hint.textContent = '純文字三段旁白卡會依段落由左至右排成三欄，建議用空行分成三段。';
+          section.appendChild(hint);
+        }
         pagesWrap.appendChild(section);
       });
       wrap.appendChild(pagesWrap);
@@ -2165,29 +2432,34 @@
       return `
         <article class="${classes}" data-virtual-transition-id="${node.graphId || node.id}" data-node-id="${node.sourceNodeId}" style="left:${position.x}px;top:${position.y}px;width:140px;min-width:140px;background:#fff7f1;border-style:dashed;border-color:#d8bda3;">
           <div class="row space-between">
-            <div class="node-title">過場</div>
-            <span class="pill">virtual</span>
+            <div class="node-title">過場映射</div>
+            <span class="pill warn">映射</span>
           </div>
-          <div class="subtle">${escapeHtml(node.branch ? `${node.branch} 分支` : `來自 ${node.sourceNodeId}`)}</div>
+          <div class="subtle">${escapeHtml(node.branch ? `來自選項 ${node.branch}` : '來自下一幕過場')}</div>
           <div class="graph-node-summary">${escapeHtml(summary.slice(0, 20))}</div>
           <div class="graph-links">${links.length ? links.map((link) => `<span class="pill">${escapeHtml(link)}</span>`).join('') : '<span class="subtle">尚未連線</span>'}</div>
         </article>
       `;
     }
+    const nodeLabel = node.type === 'choice'
+      ? '決策節點'
+      : node.type === 'carousel'
+        ? '多頁內容'
+        : '內容節點';
     return `
       <article class="${classes}" data-node-id="${node.id}" style="left:${position.x}px;top:${position.y}px;">
         <div class="row space-between">
           <div class="node-title">ACT ${index + 1}</div>
           <span class="pill">${escapeHtml(node.type)}</span>
         </div>
-        <div class="subtle">${escapeHtml(node.unreachable ? 'unreachable' : `num.${index + 1}`)}</div>
+        <div class="subtle">${escapeHtml(node.unreachable ? 'unreachable' : nodeLabel)}</div>
         <div class="graph-node-summary">${escapeHtml(summary.slice(0, 54))}</div>
         <div class="graph-links">${links.length ? links.map((link) => `<span class="pill">${escapeHtml(link)}</span>`).join('') : '<span class="subtle">尚未連線</span>'}</div>
         <div class="graph-node-actions">
           <button class="graph-node-action" data-node-action="insert-dialogue" data-node-id="${node.id}">＋對話</button>
           <button class="graph-node-action" data-node-action="insert-narration" data-node-id="${node.id}">＋旁白</button>
           <button class="graph-node-action" data-node-action="insert-choice" data-node-id="${node.id}">＋選項</button>
-          <button class="graph-node-action" data-node-action="insert-transition" data-node-id="${node.id}">＋過場</button>
+          <button class="graph-node-action" data-node-action="insert-transition" data-node-id="${node.id}">編輯過場</button>
         </div>
         <div class="graph-node-actions">
           <button class="graph-node-action" data-node-action="duplicate" data-node-id="${node.id}">複製</button>
@@ -2214,36 +2486,33 @@
     const context = currentPreviewContext();
     const wrapper = document.createElement('div');
     wrapper.className = 'stack';
+    const virtualTransition = currentVirtualTransition();
+    const scope = describeEditorScope(node, context, virtualTransition);
 
     const header = document.createElement('div');
     header.className = 'editor-selection';
-    const selectionLabel = context.targetType === 'page'
-      ? `正在編輯第 ${context.pageIndex + 1} 頁`
-      : context.targetType === 'choice'
-        ? '正在編輯選項卡'
-        : '正在編輯節點主卡';
     header.innerHTML = `
       <div>
-        <div class="editor-selection-title">${escapeHtml(context.targetType === 'page' ? (context.page?.title || '目前頁面') : node.title)}</div>
-        <div class="editor-selection-meta">${escapeHtml(selectionLabel)}</div>
+        <div class="editor-breadcrumb">${scope.breadcrumb.map((part) => `<span>${escapeHtml(part)}</span>`).join('')}</div>
+        <div class="editor-selection-title">${escapeHtml(scope.title)}</div>
+        <div class="editor-selection-meta">${escapeHtml(scope.meta)}</div>
+        <div class="editor-selection-scope">${escapeHtml(scope.scope)}</div>
         <div class="graph-links" style="margin-top:8px;">
-          <span class="pill warn">${escapeHtml(context.targetType === 'page' ? 'Page' : context.targetType === 'choice' ? 'Choice' : 'Node')}</span>
+          ${scope.pills.map((pill, index) => `<span class="pill ${index === 0 ? 'warn' : ''}">${escapeHtml(pill)}</span>`).join('')}
           <span class="pill">${escapeHtml(node.id)}</span>
-          ${state.currentVirtualTransitionId ? '<span class="pill bad">正在查看過場映射</span>' : ''}
         </div>
       </div>
     `;
     const saveButton = document.createElement('button');
     saveButton.className = 'button';
-    saveButton.textContent = '儲存故事';
+    saveButton.textContent = '儲存整個故事';
     saveButton.addEventListener('click', handleSaveStory);
     const renderBlocker = currentRenderBlocker();
     saveButton.disabled = Boolean(renderBlocker);
-    saveButton.title = renderBlocker || '';
+    saveButton.title = renderBlocker || '儲存整個故事，包含目前節點、頁面與過場映射。';
     header.appendChild(saveButton);
     wrapper.appendChild(header);
 
-    const virtualTransition = currentVirtualTransition();
     if (virtualTransition && virtualTransition.sourceNodeId === node.id) {
       wrapper.appendChild(renderVirtualTransitionInspector(virtualTransition, story));
     }
@@ -2307,8 +2576,8 @@
     const tip = document.createElement('div');
     tip.className = 'subtle';
     tip.textContent = entry.branch
-      ? `這不是獨立 block。你現在改的就是「選項 ${entry.branch}」的選後過場文案，改完後按「儲存故事」。`
-      : '這不是獨立 block。你現在改的就是「下一幕過場文案」，改完後按「儲存故事」。';
+      ? `這不是獨立節點。你現在改的是「選項 ${entry.branch}」的過場映射，內容會回寫到原本選項欄位。`
+      : '這不是獨立節點。你現在改的是「下一幕過場映射」，內容會回寫到目前節點。';
     section.appendChild(tip);
     return section;
   }
@@ -2457,6 +2726,7 @@
   function renderSelectedPageEditor(node, page, pageIndex) {
     const wrap = document.createElement('div');
     wrap.className = 'stack';
+    const isTextOnlyNarration = isTextTriptychCard(page.cardType || 'dialogue');
 
     const section = document.createElement('section');
     section.className = 'panel';
@@ -2466,11 +2736,11 @@
     heading.innerHTML = `<h3>${escapeHtml(page.title || `第 ${pageIndex + 1} 頁`)}</h3>`;
     const saveButton = document.createElement('button');
     saveButton.className = 'button good';
-    saveButton.textContent = '儲存故事';
+    saveButton.textContent = '儲存整個故事';
     saveButton.addEventListener('click', handleSaveStory);
     const renderBlocker = currentRenderBlocker();
     saveButton.disabled = Boolean(renderBlocker);
-    saveButton.title = renderBlocker || '';
+    saveButton.title = renderBlocker || '儲存整個故事，包含目前頁面的修改。';
     heading.appendChild(saveButton);
     section.appendChild(heading);
 
@@ -2484,15 +2754,20 @@
       createField('頁面標題', input(page.title || '', (value) => updatePageField(node, pageIndex, 'title', value))),
       createField('頁面卡型', select([
         ['dialogue', '對話卡'],
-        ['narration', '旁白卡']
+        ['narration', '旁白卡'],
+        ['narration-triptych', '純文字三段旁白卡']
       ], page.cardType || 'dialogue', (value) => updatePageField(node, pageIndex, 'cardType', value))),
-      createField('頁面圖片', imageInput(page.imagePath, (value) => updatePageField(node, pageIndex, 'imagePath', value))),
-      createField('大圖透明度', decimalInput(page.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageOpacity', value))),
-      createField('大圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
       createField('中文字體', select(fontOptions(), page.previewFont || 'default', (value) => updatePageField(node, pageIndex, 'previewFont', value))),
       createField('LINE 字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updatePageField(node, pageIndex, 'lineTextSize', value))),
       createField('文字顏色', colorInput(page.lineTextColor || '#2D241B', (value) => updatePageField(node, pageIndex, 'lineTextColor', value)))
     );
+    if (!isTextOnlyNarration) {
+      grid.append(
+        createField('頁面圖片', imageInput(page.imagePath, (value) => updatePageField(node, pageIndex, 'imagePath', value))),
+        createField('大圖透明度', decimalInput(page.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageOpacity', value))),
+        createField('大圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`))
+      );
+    }
     if (page.cardType === 'dialogue') {
       grid.append(
         createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updatePageField(node, pageIndex, 'speakerCharacterId', value))),
@@ -2502,6 +2777,12 @@
     }
     grid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updatePageField(node, pageIndex, 'text', value)), 'single'));
     section.appendChild(grid);
+    if (isTextOnlyNarration) {
+      const hint = document.createElement('div');
+      hint.className = 'subtle';
+      hint.textContent = '這張卡不吃圖片，會把文字分成三段，照左到右排成純文字旁白卡。';
+      section.appendChild(hint);
+    }
     wrap.appendChild(section);
 
     return wrap;
@@ -2519,11 +2800,11 @@
     promptHeader.appendChild(sectionHeading('選項提問'));
     const saveButton = document.createElement('button');
     saveButton.className = 'button good';
-    saveButton.textContent = '儲存故事';
+    saveButton.textContent = '儲存整個故事';
     saveButton.addEventListener('click', handleSaveStory);
     const renderBlocker = currentRenderBlocker();
     saveButton.disabled = Boolean(renderBlocker);
-    saveButton.title = renderBlocker || '';
+    saveButton.title = renderBlocker || '儲存整個故事，包含目前選項卡與分支設定。';
     promptHeader.appendChild(saveButton);
     promptPanel.appendChild(promptHeader);
     const promptGrid = document.createElement('div');
@@ -2584,10 +2865,14 @@
     const total = state.preview?.models?.length || 0;
     const transitionCount = state.preview?.transitionPreviews?.length || 0;
     dom.previewCounter.textContent = total || transitionCount ? `共 ${total} 張卡 / ${transitionCount} 段過場` : '0 張';
+    if (dom.previewVersionHint) {
+      dom.previewVersionHint.textContent = currentPreviewVersionHint();
+    }
     const current = currentPreviewModel();
-    dom.previewOutputMeta.textContent = current?.renderedImagePath
-      ? `目前實際輸出圖: ${current.renderedImagePath}`
-      : '目前尚未產生輸出圖。';
+    const currentAssetMeta = current?.renderedImagePath
+      ? `目前編輯版輸出圖：${current.renderedImagePath}`
+      : '目前尚未產生編輯版輸出圖。';
+    dom.previewOutputMeta.textContent = `${currentAssetMeta}\n${state.isDirty ? '尚有未儲存改動；正式 LINE 圖片仍停留在最後一次已發布版本。' : '若已完成整體發布流程，LINE 才會與這裡一致。'}`;
     if (!state.preview || (!total && !transitionCount)) {
       if (state.previewIssues.length) {
         dom.scenePreview.appendChild(renderPreviewNoticeCard(state.previewIssues[0]?.message || state.previewStatus));
@@ -2764,6 +3049,13 @@
     return element;
   }
 
+  function staticValue(value) {
+    const element = document.createElement('div');
+    element.className = 'status-box';
+    element.textContent = value || '尚未設定。';
+    return element;
+  }
+
   function numberInput(value, onInput) {
     const element = document.createElement('input');
     element.type = 'number';
@@ -2812,6 +3104,33 @@
     element.value = value ?? '';
     element.addEventListener('input', () => onInput(element.value));
     return element;
+  }
+
+  function checkboxList(options, selectedValues, onChange) {
+    const wrap = document.createElement('div');
+    wrap.className = 'stack';
+    const selected = new Set(Array.isArray(selectedValues) ? selectedValues : []);
+    options.forEach(([optionValue, label]) => {
+      const row = document.createElement('label');
+      row.className = 'row';
+      row.style.alignItems = 'center';
+      row.style.gap = '10px';
+      row.style.padding = '8px 0';
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.value = optionValue;
+      checkbox.checked = selected.has(optionValue);
+      checkbox.addEventListener('change', () => {
+        const nextSelected = Array.from(wrap.querySelectorAll('input[type="checkbox"]:checked'))
+          .map((entry) => entry.value);
+        onChange(nextSelected);
+      });
+      const text = document.createElement('span');
+      text.textContent = label;
+      row.append(checkbox, text);
+      wrap.appendChild(row);
+    });
+    return wrap;
   }
 
   function select(options, value, onChange) {
@@ -2993,6 +3312,14 @@
     if (!target) return;
     target.speakerCharacterId = '';
     target.companionCharacterId = '';
+  }
+
+  function isTextTriptychCard(cardType = '') {
+    return cardType === 'narration-triptych';
+  }
+
+  function isNarrationLikeCard(cardType = '') {
+    return cardType === 'narration' || isTextTriptychCard(cardType);
   }
 
   function updateNodePosition(axis, value) {
@@ -3203,8 +3530,9 @@
       nextPage.cardType = options.cardType;
       if (options.cardType === 'dialogue') {
         ensureDialogueRoleDefaults(nextPage);
-      } else if (options.cardType === 'narration') {
+      } else if (isNarrationLikeCard(options.cardType)) {
         clearDialogueRoleFields(nextPage);
+        if (isTextTriptychCard(options.cardType)) nextPage.imagePath = '';
       }
     }
     node.pages.splice(afterIndex + 1, 0, nextPage);
@@ -3260,8 +3588,9 @@
     if (field === 'cardType') {
       if (value === 'dialogue') {
         ensureDialogueRoleDefaults(node.pages[pageIndex]);
-      } else if (value === 'narration') {
+      } else if (isNarrationLikeCard(value)) {
         clearDialogueRoleFields(node.pages[pageIndex]);
+        if (isTextTriptychCard(value)) node.pages[pageIndex].imagePath = '';
       }
       renderNodeEditor();
     }
@@ -3331,6 +3660,14 @@
     const node = currentDraftNode();
     if (!node || !node.pages?.[pageIndex]) return;
     node.pages[pageIndex][field] = value;
+    if (field === 'cardType') {
+      if (value === 'dialogue') {
+        ensureDialogueRoleDefaults(node.pages[pageIndex]);
+      } else if (isNarrationLikeCard(value)) {
+        clearDialogueRoleFields(node.pages[pageIndex]);
+        if (isTextTriptychCard(value)) node.pages[pageIndex].imagePath = '';
+      }
+    }
     node.status = 'corrected';
     node.diff = computeDraftDiff(node);
     renderDraftEditor(currentStory());
