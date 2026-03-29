@@ -113,6 +113,7 @@ async function run() {
       throw new Error('Preview version hint missing LINE scope explanation');
     }
 
+    await page.locator('[data-story-stage="editor"]').click();
     await page.locator('#node-graph [data-node-id]').first().click();
     await page.waitForSelector('.editor-breadcrumb');
     const breadcrumb = await page.locator('.editor-breadcrumb').first().textContent();
@@ -161,7 +162,13 @@ async function run() {
     }, null, 2));
   } finally {
     await browser.close();
-    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise((resolve, reject) => {
+      if (!server.listening) {
+        resolve();
+        return;
+      }
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
   }
 }
 

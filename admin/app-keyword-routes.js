@@ -1,4 +1,6 @@
 (function attachKeywordRouteManager() {
+  const ABSOLUTE_STORY_CAROUSEL_KEYWORD = '顯示繪本故事';
+
   function createManager(deps) {
     const {
       state,
@@ -36,7 +38,13 @@
     }
 
     function accountKeywordBindings() {
-      return allKeywordBindings().filter((binding) => keywordBindingScope(binding) === 'account');
+      return allKeywordBindings()
+        .filter((binding) => keywordBindingScope(binding) === 'account')
+        .sort((left, right) => {
+          const leftPinned = `${left?.keyword || ''}`.trim() === ABSOLUTE_STORY_CAROUSEL_KEYWORD ? -1 : 0;
+          const rightPinned = `${right?.keyword || ''}`.trim() === ABSOLUTE_STORY_CAROUSEL_KEYWORD ? -1 : 0;
+          return leftPinned - rightPinned;
+        });
     }
 
     function currentTriggerBinding() {
@@ -79,10 +87,15 @@
         storyId: story?.id || '',
         title: story?.title || '',
         subtitle: story?.description || (story ? `開始故事「${story.title || '未命名故事'}」` : ''),
+        author: '',
         buttonLabel: fallbackButtonLabel || '開始閱讀',
         imagePath: '',
         sortOrder: 0
       };
+    }
+
+    function isAbsoluteStoryCarouselBinding(binding) {
+      return `${binding?.keyword || ''}`.trim() === ABSOLUTE_STORY_CAROUSEL_KEYWORD;
     }
 
     function createKeywordBindingDraft(actionType = 'story') {
@@ -125,6 +138,9 @@
       const binding = (state.globalSettings?.triggerBindings || []).find((entry) => entry.id === bindingId);
       if (!binding) return;
       binding[field] = value;
+      if (isAbsoluteStoryCarouselBinding(binding) && (field === 'keyword' || field === 'actionType')) {
+        return;
+      }
       if (field === 'actionType') {
         binding.label = value === 'carousel' ? '故事選單' : value === 'transition' ? '過場訊息' : '開始故事';
         if (binding.actionType === 'story') {
@@ -166,6 +182,7 @@
     function addCarouselItem(bindingId) {
       const binding = (state.globalSettings?.triggerBindings || []).find((entry) => entry.id === bindingId);
       if (!binding) return;
+      if (isAbsoluteStoryCarouselBinding(binding)) return;
       const usedStoryIds = new Set((binding.carouselItems || []).map((item) => item.storyId).filter(Boolean));
       const nextStory = (state.stories || []).find((story) => !usedStoryIds.has(story.id)) || state.stories?.[0] || null;
       const nextItem = createCarouselItemDraft(nextStory, binding.buttonLabel || '開始閱讀');
@@ -324,6 +341,7 @@
       }
 
       const actionType = keywordBindingActionType(binding);
+      const isAbsoluteCarousel = isAbsoluteStoryCarouselBinding(binding);
       const targetStory = findStoryById(binding.storyId) || state.stories?.[0] || null;
       const storyOptions = [['', '未指定'], ...(state.stories || []).map((story) => [story.id, story.title || story.id])];
       const startNodeOptions = targetStory
@@ -338,11 +356,13 @@
       header.appendChild(sectionHeading('編輯帳號指令'));
       const actions = document.createElement('div');
       actions.className = 'actions';
-      const deleteButton = document.createElement('button');
-      deleteButton.className = 'button ghost';
-      deleteButton.textContent = '刪除帳號指令';
-      deleteButton.addEventListener('click', () => deleteKeywordBinding(binding.id));
-      actions.appendChild(deleteButton);
+      if (!isAbsoluteCarousel) {
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'button ghost';
+        deleteButton.textContent = '刪除帳號指令';
+        deleteButton.addEventListener('click', () => deleteKeywordBinding(binding.id));
+        actions.appendChild(deleteButton);
+      }
       header.appendChild(actions);
       shell.appendChild(header);
 
@@ -357,6 +377,10 @@
         ], actionType, (value) => updateKeywordBindingField(binding.id, 'actionType', value))),
         createField('顯示標籤', input(binding.label || '', (value) => updateKeywordBindingField(binding.id, 'label', value)))
       );
+      if (isAbsoluteCarousel) {
+        grid.firstChild.querySelector('input').disabled = true;
+        grid.children[1].querySelector('select').disabled = true;
+      }
 
       if (actionType === 'story') {
         grid.append(
@@ -371,6 +395,9 @@
           createField('導覽訊息', textarea(binding.messageText || '', (value) => updateKeywordBindingField(binding.id, 'messageText', value)), 'single'),
           createField('預設按鈕文字', input(binding.buttonLabel || '開始閱讀', (value) => updateKeywordBindingField(binding.id, 'buttonLabel', value)))
         );
+        if (isAbsoluteCarousel) {
+          shell.appendChild(createBlockingNotice('這組指令是 system account 的最高優先命令。只要使用者輸入「顯示繪本故事」，就會直接顯示繪本 carousel。'));
+        }
         shell.appendChild(grid);
 
         const carouselSection = document.createElement('div');
@@ -432,9 +459,10 @@
                 select(storyOptions, item.storyId || '', (value) => updateCarouselItemField(binding.id, item.id, 'storyId', value))
               ),
               createField('卡片標題', input(item.title || '', (value) => updateCarouselItemField(binding.id, item.id, 'title', value))),
+              createField('繪本作家', input(item.author || '', (value) => updateCarouselItemField(binding.id, item.id, 'author', value))),
               createField('按鈕文字', input(item.buttonLabel || binding.buttonLabel || '開始閱讀', (value) => updateCarouselItemField(binding.id, item.id, 'buttonLabel', value))),
               createField('自訂封面', imageInput(item.imagePath || '', (value) => updateCarouselItemField(binding.id, item.id, 'imagePath', value))),
-              createField('卡片說明', textarea(item.subtitle || itemStory?.description || '', (value) => updateCarouselItemField(binding.id, item.id, 'subtitle', value)), 'single')
+              createField('繪本描述', textarea(item.subtitle || itemStory?.description || '', (value) => updateCarouselItemField(binding.id, item.id, 'subtitle', value)), 'single')
             );
             panel.appendChild(panelGrid);
             carouselSection.appendChild(panel);

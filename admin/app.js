@@ -16,13 +16,13 @@
     pendingAction: '',
     lastActionResult: '',
     workspaceTab: 'story',
-    storyStage: 'final',
-    previewPanel: 'visual',
+    storyStage: 'overview',
+    previewPanel: 'payload',
     previewIndex: 0,
     justDraggedNodeId: '',
     currentVirtualTransitionId: '',
     currentKeywordBindingId: '',
-    settingStatus: '這裡編輯的是全帳號共用 trigger route。',
+    settingStatus: '編輯 account trigger routes。',
     graphLayoutOverrides: {}
   };
 
@@ -32,6 +32,7 @@
   const BLOCK_FLOW_SPACING_X = 420;
 
   const dom = {};
+  let activePreviewRequestId = 0;
 
   document.addEventListener('DOMContentLoaded', boot);
 
@@ -75,11 +76,7 @@
     dom.addKeywordTransition = document.getElementById('add-keyword-transition');
     dom.saveAccountSettings = document.getElementById('save-account-settings');
     dom.storyStageTabs = Array.from(document.querySelectorAll('[data-story-stage]'));
-    dom.storyStagePanels = {
-      characters: document.getElementById('story-stage-characters'),
-      import: document.getElementById('story-stage-import'),
-      final: document.getElementById('story-stage-final')
-    };
+    dom.storyStagePanels = Array.from(document.querySelectorAll('[data-story-stage-panel]'));
     dom.storyCharacterList = document.getElementById('story-character-list');
     dom.addStoryCharacter = document.getElementById('add-story-character');
     dom.addProtagonistTemplate = document.getElementById('add-protagonist-template');
@@ -123,7 +120,6 @@
     dom.simulationOutput = document.getElementById('simulation-output');
     dom.previewTabs = Array.from(document.querySelectorAll('[data-preview-panel]'));
     dom.previewPanels = {
-      visual: document.getElementById('preview-panel-visual'),
       payload: document.getElementById('preview-panel-payload'),
       simulate: document.getElementById('preview-panel-simulate')
     };
@@ -153,10 +149,10 @@
     if (dom.heroRender) dom.heroRender.addEventListener('click', handleDeployRender);
     if (dom.validateStory) dom.validateStory.addEventListener('click', handleValidateStory);
     if (dom.testTrigger) dom.testTrigger.addEventListener('click', handleTestTrigger);
-    dom.validateNode.addEventListener('click', handleValidateNode);
+    if (dom.validateNode) dom.validateNode.addEventListener('click', handleValidateNode);
     if (dom.testNode) dom.testNode.addEventListener('click', handleTestNode);
-    dom.simulateMessage.addEventListener('click', handleSimulateMessage);
-    dom.simulateReset.addEventListener('click', handleResetSimulation);
+    if (dom.simulateMessage) dom.simulateMessage.addEventListener('click', handleSimulateMessage);
+    if (dom.simulateReset) dom.simulateReset.addEventListener('click', handleResetSimulation);
     dom.moduleButtons.forEach((button) => button.addEventListener('click', () => handleAddNode(button.dataset.addNode)));
     dom.appendDialogueFlow.addEventListener('click', handleAppendDialogueFlow);
     dom.storyTitleInput.addEventListener('input', () => updateStoryField('title', dom.storyTitleInput.value));
@@ -282,7 +278,7 @@
         return {
           ...entry,
           graphId: entry.id,
-          title: entry.branch ? `過場 ${entry.branch}` : '過場',
+          title: entry.branch ? `過場 ${entry.branch}` : entry.position === 'before' ? '開頭過場' : '過場',
           summary: entry.text || '',
           unreachable: false
         };
@@ -350,7 +346,9 @@
         }
         if (source) {
           placed.set(entry.graphId || entry.id, {
-            x: snapToBlockGrid(source.x + 250, BLOCK_MIN_X),
+            x: entry.position === 'before'
+              ? snapToBlockGrid(Math.max(BLOCK_MIN_X, source.x - 220), BLOCK_MIN_X)
+              : snapToBlockGrid(source.x + 250, BLOCK_MIN_X),
             y: snapToBlockGrid(
               source.y + (entry.branch === 'A' ? -132 : entry.branch === 'B' ? 176 : -132),
               24
@@ -386,6 +384,8 @@
       speakerCharacterId: defaultSpeakerId(),
       companionCharacterId: '',
       nextNodeId: '',
+      introTransitionText: '',
+      transitionText: '',
       continueLabel: '下一步',
       position: {
         x: 80,
@@ -599,6 +599,8 @@
     requestAnimationFrame(() => {
       const selector = target === 'choice'
         ? '[data-transition-field="choice-a"] textarea, [data-transition-field="choice-b"] textarea'
+        : target === 'intro'
+          ? '[data-transition-field="intro"] textarea'
         : target === 'choice-a'
           ? '[data-transition-field="choice-a"] textarea'
           : target === 'choice-b'
@@ -678,12 +680,16 @@
     if (virtualTransition && virtualTransition.sourceNodeId === node?.id) {
       const branchLabel = virtualTransition.branch
         ? `選項 ${virtualTransition.branch} 過場`
-        : '下一幕過場';
+        : virtualTransition.position === 'before'
+          ? '開頭過場'
+          : '下一幕過場';
       breadcrumb.push(branchLabel);
       title = branchLabel;
       meta = virtualTransition.branch
         ? `這裡編輯的是選項 ${virtualTransition.branch} 的過場映射，內容會回寫到原本選項欄位。`
-        : '這裡編輯的是節點的下一幕過場映射，內容會回寫到目前節點。';
+        : virtualTransition.position === 'before'
+          ? '這段會在本節點第一張卡片前送出。'
+          : '這裡編輯的是節點的下一幕過場映射，內容會回寫到目前節點。';
       scope = '過場映射';
       pills = ['Transition'];
     } else if (context.targetType === 'page' && context.page) {
@@ -705,14 +711,14 @@
 
   function currentPreviewVersionHint() {
     const story = currentStory();
-    if (!story) return '目前預覽的是編輯版；LINE 顯示的是最後一次已發布到 Render 的版本。';
+    if (!story) return 'Preview 是編輯版，LINE 是正式版。';
     if (!storyPublishedAssetCount(story)) {
-      return '目前還沒有正式發布圖片。這裡看到的是編輯版，LINE 不會與此一致。';
+      return '尚未發布正式圖片。';
     }
     if (state.isDirty) {
-      return '目前預覽包含尚未儲存的改動。LINE 仍顯示最後一次已發布到 Render 的版本。';
+      return '有未儲存改動，LINE 不會同步。';
     }
-    return '目前預覽反映最新編輯版；只有在完成「儲存故事 → 產生部署圖片 → 發布到 Render」後，LINE 才會與此一致。';
+    return '完成 Save / Generate / Deploy 後才會同步到 LINE。';
   }
 
   function resetPreviewSelection() {
@@ -746,7 +752,7 @@
           state.previewIndex = node.pages.length;
         }
         renderStories();
-        focusTransitionField(entry?.branch ? `choice-${entry.branch.toLowerCase()}` : 'node');
+        focusTransitionField(entry?.fieldTarget || (entry?.branch ? `choice-${entry.branch.toLowerCase()}` : entry?.position === 'before' ? 'intro' : 'node'));
       });
     });
     dom.nodeGraph.querySelectorAll('[data-node-action]').forEach((button) => {
@@ -1106,7 +1112,7 @@
       body: JSON.stringify({ applyAll: true })
     });
     state.storyDetail.story = result.story;
-    state.storyStage = 'final';
+    state.storyStage = 'structure';
     state.previewStatus = 'AI 草稿已套用到正式故事。';
     renderStories();
     await refreshPreview();
@@ -1433,6 +1439,8 @@
   }
 
   async function refreshPreview() {
+    const requestId = activePreviewRequestId + 1;
+    activePreviewRequestId = requestId;
     const story = currentStory();
     const node = currentNode();
     if (!story || !node) {
@@ -1457,9 +1465,11 @@
         storyId: story.id,
         story,
         globalSettings: state.globalSettings,
-        nodeId: node.id
+        nodeId: node.id,
+        previewNonce: `${requestId}:${Date.now()}`
       })
     });
+    if (requestId !== activePreviewRequestId) return;
     state.preview = result.render;
     if (state.storyDetail) {
       state.storyDetail.traversal = result.traversal || state.storyDetail.traversal || null;
@@ -1490,6 +1500,17 @@
   }
 
   function renderStories() {
+    const availableStages = ['overview', 'characters', 'import', 'structure', 'editor'];
+    if (!availableStages.includes(state.storyStage)) {
+      state.storyStage = 'overview';
+    }
+    dom.storyStageTabs.forEach((button) => {
+      button.classList.toggle('active', button.dataset.storyStage === state.storyStage);
+    });
+    dom.storyStagePanels.forEach((panel) => {
+      panel.classList.toggle('active', panel.dataset.storyStagePanel === state.storyStage);
+    });
+
     dom.storyCount.textContent = `${state.stories.length} 個故事`;
     dom.storyList.innerHTML = state.stories.map((story, index) => `
       <button class="story-tab-pill ${story.id === state.currentStoryId ? 'active' : ''}" data-story-id="${story.id}">
@@ -1539,7 +1560,7 @@
     dom.storyTitleInput.value = story.title || '';
     dom.storyDescriptionInput.value = story.description || '';
     dom.storyTriggerInput.value = triggerKeyword || '';
-    dom.storyTriggerInput.title = '這裡只編輯目前故事自己的啟動 keyword，不會改動帳號共用指令。';
+    dom.storyTriggerInput.title = '只編輯這個故事的啟動 keyword。';
     if (dom.storyTriggerHint) dom.storyTriggerHint.textContent = currentStoryTriggerHint();
     const previewContext = currentPreviewContext();
     const isPageEditing = previewContext.targetType === 'page' && previewContext.node?.pages?.length;
@@ -1557,8 +1578,8 @@
       } else if (type === 'transition') {
         button.textContent = '編輯過場';
         button.title = story.nodes.find((node) => node.id === state.currentNodeId)?.type === 'choice'
-          ? '開啟目前選項卡的選後過場欄位，不會新增獨立節點。'
-          : '開啟目前節點的下一幕過場欄位，不會新增獨立節點。';
+          ? '編輯選後過場。'
+          : '編輯下一幕過場。';
       } else if (type === 'carousel') {
         button.textContent = '＋ 多頁訊息';
         button.title = '新增新的多頁節點。';
@@ -1569,36 +1590,36 @@
     if (dom.deployRender) dom.deployRender.disabled = hasDialogueBlockers;
     if (dom.heroApproval) dom.heroApproval.disabled = hasDialogueBlockers;
     if (dom.heroRender) dom.heroRender.disabled = hasDialogueBlockers;
-    dom.validateNode.disabled = Boolean(currentBlocker);
+    if (dom.validateNode) dom.validateNode.disabled = Boolean(currentBlocker);
     if (dom.validateStory) dom.validateStory.disabled = hasDialogueBlockers || state.pendingAction === 'validate-story';
-    dom.simulateMessage.disabled = state.pendingAction === 'simulate';
-    dom.simulateReset.disabled = state.pendingAction === 'simulate-reset';
+    if (dom.simulateMessage) dom.simulateMessage.disabled = state.pendingAction === 'simulate';
+    if (dom.simulateReset) dom.simulateReset.disabled = state.pendingAction === 'simulate-reset';
     if (dom.saveStory) dom.saveStory.textContent = state.pendingAction === 'save' ? '儲存中...' : '儲存故事';
     if (dom.publishAssets) dom.publishAssets.textContent = state.pendingAction === 'publish-assets' ? '產圖中...' : '產生部署圖片';
     if (dom.deployRender) dom.deployRender.textContent = state.pendingAction === 'deploy-render' ? '發布中...' : '發布到 Render';
     if (dom.heroApproval) dom.heroApproval.textContent = state.pendingAction === 'publish-assets' ? 'Approval...' : 'Approval';
     if (dom.heroRender) dom.heroRender.textContent = state.pendingAction === 'deploy-render' ? 'Render...' : 'Render';
     if (dom.validateStory) dom.validateStory.textContent = state.pendingAction === 'validate-story' ? '檢查中...' : '檢查故事';
-    dom.validateNode.textContent = state.pendingAction === 'validate-node' ? '檢查中...' : '驗證目前節點';
-    dom.simulateMessage.textContent = state.pendingAction === 'simulate' ? '執行中...' : '送出文字事件';
-    dom.simulateReset.textContent = state.pendingAction === 'simulate-reset' ? '重置中...' : '重置 session';
-    if (dom.saveStory) dom.saveStory.title = currentBlocker || '儲存整個故事，包括目前節點、頁面與故事啟動 keyword。';
-    if (dom.publishAssets) dom.publishAssets.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '重建整個故事的正式圖片，不只目前節點。';
-    if (dom.deployRender) dom.deployRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '把最後一次產圖結果部署到正式 Render。';
-    if (dom.heroApproval) dom.heroApproval.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '重建整個故事的正式圖片，不只目前節點。';
-    if (dom.heroRender) dom.heroRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '把最後一次產圖結果部署到正式 Render。';
-    if (dom.validateStory) dom.validateStory.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '檢查整個故事的節點結構與 LINE payload。';
-    dom.validateNode.title = currentBlocker || '只驗證目前節點的 payload，不是整個故事。';
-    dom.simulateMessage.title = '使用目前輸入文字直接跑 runtime，驗證流程與 session。';
-    dom.simulateReset.title = '清空目前模擬用 session，不會影響正式 LINE 使用者。';
-    if (dom.publishScopeHint) dom.publishScopeHint.textContent = '儲存故事只會更新編輯版；產生部署圖片會重建整個故事的正式圖片；發布到 Render 會把最後一次產圖結果上線。';
+    if (dom.validateNode) dom.validateNode.textContent = state.pendingAction === 'validate-node' ? '檢查中...' : '驗證目前節點';
+    if (dom.simulateMessage) dom.simulateMessage.textContent = state.pendingAction === 'simulate' ? '執行中...' : '送出文字事件';
+    if (dom.simulateReset) dom.simulateReset.textContent = state.pendingAction === 'simulate-reset' ? '重置中...' : '重置 session';
+    if (dom.saveStory) dom.saveStory.title = currentBlocker || '儲存故事';
+    if (dom.publishAssets) dom.publishAssets.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '產生正式圖片';
+    if (dom.deployRender) dom.deployRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '部署到 Render';
+    if (dom.heroApproval) dom.heroApproval.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '產生正式圖片';
+    if (dom.heroRender) dom.heroRender.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '部署到 Render';
+    if (dom.validateStory) dom.validateStory.title = hasDialogueBlockers ? `已停用：${blockerReason}` : '檢查整個故事';
+    if (dom.validateNode) dom.validateNode.title = currentBlocker || '檢查目前節點';
+    if (dom.simulateMessage) dom.simulateMessage.title = '用目前文字跑 runtime';
+    if (dom.simulateReset) dom.simulateReset.title = '清空模擬 session';
+    if (dom.publishScopeHint) dom.publishScopeHint.textContent = 'Save story -> Generate images -> Deploy Render';
     if (dom.heroStatus) {
       dom.heroStatus.textContent = state.previewStatus || '尚未載入節點。';
     }
-    if (!dom.simulateText.value || dom.simulateText.value === '101') {
+    if (dom.simulateText && (!dom.simulateText.value || dom.simulateText.value === '101')) {
       dom.simulateText.value = triggerKeyword || '';
     }
-    dom.simulateText.placeholder = triggerKeyword ? `例如：${triggerKeyword}` : '請先設定 trigger keyword';
+    if (dom.simulateText) dom.simulateText.placeholder = triggerKeyword ? `例如：${triggerKeyword}` : '請先設定 trigger keyword';
     dom.storyStartNode.innerHTML = story.nodes.map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.title)} (${escapeHtml(node.id)})</option>`).join('');
     dom.storyStartNode.value = story.startNodeId || story.nodes[0]?.id || '';
     dom.scriptImportText.value = story.draftImport?.sourceText || '';
@@ -1653,17 +1674,14 @@
       <article class="progress-card">
         <div class="subtle">正式圖片</div>
         <strong>${escapeHtml(publishedCount)}</strong>
-        <div class="field-hint">這是目前已發布到 LINE / Render 的圖片數量。</div>
       </article>
       <article class="progress-card">
         <div class="subtle">故事啟動 Keyword</div>
         <strong>${escapeHtml(currentTriggerKeyword() || '未設定')}</strong>
-        <div class="field-hint">這裡只代表目前故事的啟動 keyword，不含帳號共用指令。</div>
       </article>
       <article class="progress-card">
         <div class="subtle">開始節點</div>
         <strong>${escapeHtml(story.startNodeId || '未設定')}</strong>
-        <div class="field-hint">故事開始時會直接進到這個節點。</div>
       </article>
       <article class="progress-card">
         <div class="subtle">Preview / LINE</div>
@@ -2128,6 +2146,7 @@
         section.className = 'panel';
         section.style.padding = '14px';
         const isTextOnlyNarration = isTextTriptychCard(page.cardType || 'dialogue');
+        const triptychSegments = splitTriptychText(page.text || '');
         const pageGrid = document.createElement('div');
         pageGrid.className = 'field-grid';
         pageGrid.append(
@@ -2137,24 +2156,35 @@
             ['narration', '旁白卡'],
             ['narration-triptych', '純文字三段旁白卡']
           ], page.cardType || 'dialogue', (value) => updateDraftPageField(pageIndex, 'cardType', value))),
+          createField('底圖', imageInput(page.imagePath, (value) => updateDraftPageField(pageIndex, 'imagePath', value))),
+          createField('底圖透明度', decimalInput(page.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updateDraftPageField(pageIndex, 'heroImageOpacity', value))),
+          createField('底圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updateDraftPageField(pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
           createField('中文字體', select(fontOptions(), page.previewFont || 'default', (value) => updateDraftPageField(pageIndex, 'previewFont', value))),
-          createField('字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updateDraftPageField(pageIndex, 'lineTextSize', value)))
+          createField('字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updateDraftPageField(pageIndex, 'lineTextSize', value))),
+          createField('文字顏色', colorInput(page.lineTextColor || '#2D241B', (value) => updateDraftPageField(pageIndex, 'lineTextColor', value)))
         );
-        if (!isTextOnlyNarration) {
-          pageGrid.appendChild(createField('頁面圖片', imageInput(page.imagePath, (value) => updateDraftPageField(pageIndex, 'imagePath', value))));
-        }
         if ((page.cardType || 'dialogue') === 'dialogue') {
           pageGrid.append(
             createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updateDraftPageField(pageIndex, 'speakerCharacterId', value))),
             createField('陪襯角色', select(characterOptions(true), page.companionCharacterId || '', (value) => updateDraftPageField(pageIndex, 'companionCharacterId', value)))
           );
         }
-        pageGrid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updateDraftPageField(pageIndex, 'text', value)), 'single'));
+        if (isTextOnlyNarration) {
+          ['左段文字', '中段文字', '右段文字'].forEach((label, segmentIndex) => {
+            pageGrid.appendChild(createField(label, textarea(triptychSegments[segmentIndex] || '', (value) => {
+              const nextSegments = splitTriptychText(page.text || '');
+              nextSegments[segmentIndex] = value;
+              updateDraftPageField(pageIndex, 'text', composeTriptychText(nextSegments));
+            }), 'single'));
+          });
+        } else {
+          pageGrid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updateDraftPageField(pageIndex, 'text', value)), 'single'));
+        }
         section.appendChild(pageGrid);
         if (isTextOnlyNarration) {
           const hint = document.createElement('div');
           hint.className = 'subtle';
-          hint.textContent = '純文字三段旁白卡會依段落由左至右排成三欄，建議用空行分成三段。';
+          hint.textContent = '這張卡會把三段文字由左至右排成三欄，底圖與透明度也會一起進正式輸出。';
           section.appendChild(hint);
         }
         pagesWrap.appendChild(section);
@@ -2432,10 +2462,10 @@
       return `
         <article class="${classes}" data-virtual-transition-id="${node.graphId || node.id}" data-node-id="${node.sourceNodeId}" style="left:${position.x}px;top:${position.y}px;width:140px;min-width:140px;background:#fff7f1;border-style:dashed;border-color:#d8bda3;">
           <div class="row space-between">
-            <div class="node-title">過場映射</div>
+            <div class="node-title">${escapeHtml(node.position === 'before' ? '開頭過場' : '過場映射')}</div>
             <span class="pill warn">映射</span>
           </div>
-          <div class="subtle">${escapeHtml(node.branch ? `來自選項 ${node.branch}` : '來自下一幕過場')}</div>
+          <div class="subtle">${escapeHtml(node.branch ? `來自選項 ${node.branch}` : node.position === 'before' ? '來自節點開頭' : '來自下一幕過場')}</div>
           <div class="graph-node-summary">${escapeHtml(summary.slice(0, 20))}</div>
           <div class="graph-links">${links.length ? links.map((link) => `<span class="pill">${escapeHtml(link)}</span>`).join('') : '<span class="subtle">尚未連線</span>'}</div>
         </article>
@@ -2548,6 +2578,8 @@
             updateChoiceField(entry.branch === 'A' ? 'optionA' : 'optionB', 'nextNodeId', value);
           })
         )
+      : entry.position === 'before'
+        ? null
       : createField(
           '下一節點',
           select(nextNodeOptions(story), node?.nextNodeId || '', (value) => updateNodeField('nextNodeId', value))
@@ -2560,24 +2592,38 @@
           }),
           'single'
         )
+      : entry.position === 'before'
+        ? createField(
+            '過場內容',
+            textarea(node?.introTransitionText || '', (value) => updateNodeField('introTransitionText', value)),
+            'single'
+          )
       : createField(
           '過場內容',
           textarea(node?.transitionText || '', (value) => updateNodeField('transitionText', value)),
           'single'
         );
-    contentField.dataset.transitionField = entry.branch ? `choice-${entry.branch.toLowerCase()}` : 'node';
+    contentField.dataset.transitionField = entry.branch
+      ? `choice-${entry.branch.toLowerCase()}`
+      : entry.position === 'before'
+        ? 'intro'
+        : 'node';
     const sourceInput = sourceField.querySelector('input');
     if (sourceInput) {
       sourceInput.readOnly = true;
       sourceInput.disabled = true;
     }
-    grid.append(sourceField, nextField, contentField);
+    grid.append(sourceField);
+    if (nextField) grid.append(nextField);
+    grid.append(contentField);
     section.appendChild(grid);
     const tip = document.createElement('div');
     tip.className = 'subtle';
     tip.textContent = entry.branch
       ? `這不是獨立節點。你現在改的是「選項 ${entry.branch}」的過場映射，內容會回寫到原本選項欄位。`
-      : '這不是獨立節點。你現在改的是「下一幕過場映射」，內容會回寫到目前節點。';
+      : entry.position === 'before'
+        ? '這不是獨立節點。這段會在本節點第一張卡片前送出。'
+        : '這不是獨立節點。你現在改的是「下一幕過場映射」，內容會回寫到目前節點。';
     section.appendChild(tip);
     return section;
   }
@@ -2621,6 +2667,11 @@
       );
     }
     container.appendChild(createField('文字', textarea(node.text || '', (value) => updateNodeField('text', value)), 'single'));
+    if (node.type !== 'transition') {
+      const introField = createField('開場過場文案', textarea(node.introTransitionText || '', (value) => updateNodeField('introTransitionText', value)), 'single');
+      introField.dataset.transitionField = 'intro';
+      container.appendChild(introField);
+    }
     if (node.type !== 'choice') {
       const transitionField = createField('下一幕過場文案', textarea(node.transitionText || '', (value) => updateNodeField('transitionText', value)), 'single');
       transitionField.dataset.transitionField = 'node';
@@ -2727,6 +2778,7 @@
     const wrap = document.createElement('div');
     wrap.className = 'stack';
     const isTextOnlyNarration = isTextTriptychCard(page.cardType || 'dialogue');
+    const triptychSegments = splitTriptychText(page.text || '');
 
     const section = document.createElement('section');
     section.className = 'panel';
@@ -2757,17 +2809,13 @@
         ['narration', '旁白卡'],
         ['narration-triptych', '純文字三段旁白卡']
       ], page.cardType || 'dialogue', (value) => updatePageField(node, pageIndex, 'cardType', value))),
+      createField('底圖', imageInput(page.imagePath, (value) => updatePageField(node, pageIndex, 'imagePath', value))),
+      createField('底圖透明度', decimalInput(page.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageOpacity', value))),
+      createField('底圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`)),
       createField('中文字體', select(fontOptions(), page.previewFont || 'default', (value) => updatePageField(node, pageIndex, 'previewFont', value))),
       createField('LINE 字級', select(textSizeOptions(), page.lineTextSize || 'lg', (value) => updatePageField(node, pageIndex, 'lineTextSize', value))),
       createField('文字顏色', colorInput(page.lineTextColor || '#2D241B', (value) => updatePageField(node, pageIndex, 'lineTextColor', value)))
     );
-    if (!isTextOnlyNarration) {
-      grid.append(
-        createField('頁面圖片', imageInput(page.imagePath, (value) => updatePageField(node, pageIndex, 'imagePath', value))),
-        createField('大圖透明度', decimalInput(page.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageOpacity', value))),
-        createField('大圖縮放', rangeInput(page.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updatePageField(node, pageIndex, 'heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`))
-      );
-    }
     if (page.cardType === 'dialogue') {
       grid.append(
         createField('主講角色', select(characterOptions(true), page.speakerCharacterId || '', (value) => updatePageField(node, pageIndex, 'speakerCharacterId', value))),
@@ -2775,12 +2823,22 @@
         createField('姓名牌大小', nameplateSizeSlider(page.nameplateSize || 'lg', (value) => updatePageField(node, pageIndex, 'nameplateSize', value)))
       );
     }
-    grid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updatePageField(node, pageIndex, 'text', value)), 'single'));
+    if (isTextOnlyNarration) {
+      ['左段文字', '中段文字', '右段文字'].forEach((label, segmentIndex) => {
+        grid.appendChild(createField(label, textarea(triptychSegments[segmentIndex] || '', (value) => {
+          const nextSegments = splitTriptychText(node.pages[pageIndex].text || '');
+          nextSegments[segmentIndex] = value;
+          updatePageField(node, pageIndex, 'text', composeTriptychText(nextSegments));
+        }), 'single'));
+      });
+    } else {
+      grid.appendChild(createField('頁面文字', textarea(page.text || '', (value) => updatePageField(node, pageIndex, 'text', value)), 'single'));
+    }
     section.appendChild(grid);
     if (isTextOnlyNarration) {
       const hint = document.createElement('div');
       hint.className = 'subtle';
-      hint.textContent = '這張卡不吃圖片，會把文字分成三段，照左到右排成純文字旁白卡。';
+      hint.textContent = '這張卡是純文字三段旁白卡，你可以分別設定三段文字、字體、字級、底圖與底圖透明度。';
       section.appendChild(hint);
     }
     wrap.appendChild(section);
@@ -2857,11 +2915,14 @@
 
   function renderPreviewOnly() {
     dom.previewTabs.forEach((button) => button.classList.toggle('active', button.dataset.previewPanel === state.previewPanel));
-    Object.entries(dom.previewPanels).forEach(([key, panel]) => panel.classList.toggle('active', key === state.previewPanel));
+    Object.entries(dom.previewPanels).forEach(([key, panel]) => {
+      if (!panel) return;
+      panel.classList.toggle('active', key === state.previewPanel);
+    });
     dom.previewStatus.className = previewStatusClassName();
     dom.previewStatus.textContent = [state.previewStatus, ...state.previewIssues.map((issue) => `• ${issue.message}`)].join('\n');
     dom.scenePreview.innerHTML = '';
-    dom.payloadPreview.textContent = state.preview ? JSON.stringify(state.preview.payload, null, 2) : '{}';
+    if (dom.payloadPreview) dom.payloadPreview.textContent = state.preview ? JSON.stringify(state.preview.payload, null, 2) : '{}';
     const total = state.preview?.models?.length || 0;
     const transitionCount = state.preview?.transitionPreviews?.length || 0;
     dom.previewCounter.textContent = total || transitionCount ? `共 ${total} 張卡 / ${transitionCount} 段過場` : '0 張';
@@ -2879,10 +2940,15 @@
       }
       return;
     }
+    const beforeTransitions = (state.preview.transitionPreviews || []).filter((entry) => entry.position === 'before');
+    const afterTransitions = (state.preview.transitionPreviews || []).filter((entry) => entry.position !== 'before');
+    beforeTransitions.forEach((entry) => {
+      dom.scenePreview.appendChild(renderTransitionPreview(entry));
+    });
     state.preview.models.forEach((model, index) => {
       dom.scenePreview.appendChild(renderPreviewModel(model, index));
     });
-    (state.preview.transitionPreviews || []).forEach((entry) => {
+    afterTransitions.forEach((entry) => {
       dom.scenePreview.appendChild(renderTransitionPreview(entry));
     });
   }
@@ -2941,7 +3007,7 @@
     meta.innerHTML = `
       <div class="preview-meta-main">
         <strong>${escapeHtml(entry.title || '過場')}</strong>
-        <div class="subtle">${escapeHtml(entry.optionLabel || '轉場文案')}</div>
+        <div class="subtle">${escapeHtml(entry.optionLabel || (entry.position === 'before' ? '節點開頭' : '轉場文案'))}</div>
       </div>
       <span class="pill">Transition</span>
     `;
@@ -2954,7 +3020,7 @@
     `;
     wrapper.append(meta, article);
     wrapper.addEventListener('click', () => {
-      state.currentVirtualTransitionId = entry.id || '';
+      state.currentVirtualTransitionId = entry.id || entry.key || '';
       state.currentNodeId = entry.sourceNodeId || state.currentNodeId;
       const node = currentNode();
       if (entry.branch && Array.isArray(node?.pages)) {
@@ -2962,7 +3028,7 @@
       }
       renderPreviewOnly();
       renderNodeEditor();
-      focusTransitionField(entry.branch ? `choice-${entry.branch.toLowerCase()}` : 'node');
+      focusTransitionField(entry.fieldTarget || (entry.branch ? `choice-${entry.branch.toLowerCase()}` : entry.position === 'before' ? 'intro' : 'node'));
     });
     return wrapper;
   }
@@ -3322,6 +3388,21 @@
     return cardType === 'narration' || isTextTriptychCard(cardType);
   }
 
+  function splitTriptychText(text = '') {
+    const normalized = `${text || ''}`.replace(/\r/g, '').trim();
+    if (!normalized) return ['', '', ''];
+    const segments = normalized
+      .split(/\n\s*\n+/)
+      .map((segment) => segment.trim());
+    if (segments.length >= 3) return [segments[0] || '', segments[1] || '', segments.slice(2).join('\n\n') || ''];
+    if (segments.length === 2) return [segments[0] || '', segments[1] || '', ''];
+    return [segments[0] || '', '', ''];
+  }
+
+  function composeTriptychText(segments = []) {
+    return segments.map((segment) => `${segment || ''}`.trim()).join('\n\n').trim();
+  }
+
   function updateNodePosition(axis, value) {
     const node = currentNode();
     if (!node) return;
@@ -3532,7 +3613,6 @@
         ensureDialogueRoleDefaults(nextPage);
       } else if (isNarrationLikeCard(options.cardType)) {
         clearDialogueRoleFields(nextPage);
-        if (isTextTriptychCard(options.cardType)) nextPage.imagePath = '';
       }
     }
     node.pages.splice(afterIndex + 1, 0, nextPage);
@@ -3590,7 +3670,6 @@
         ensureDialogueRoleDefaults(node.pages[pageIndex]);
       } else if (isNarrationLikeCard(value)) {
         clearDialogueRoleFields(node.pages[pageIndex]);
-        if (isTextTriptychCard(value)) node.pages[pageIndex].imagePath = '';
       }
       renderNodeEditor();
     }
@@ -3665,7 +3744,6 @@
         ensureDialogueRoleDefaults(node.pages[pageIndex]);
       } else if (isNarrationLikeCard(value)) {
         clearDialogueRoleFields(node.pages[pageIndex]);
-        if (isTextTriptychCard(value)) node.pages[pageIndex].imagePath = '';
       }
     }
     node.status = 'corrected';
