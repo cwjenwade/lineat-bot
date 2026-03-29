@@ -976,12 +976,12 @@
     if (currentDialogueBlockers(story).length) {
       state.previewStatus = '尚有對話卡缺少主講角色，已禁止產生部署圖片。';
       state.lastActionResult = 'blocked';
-      renderPreviewOnly();
+      render();
       return;
     }
     setPendingAction('publish-assets');
     state.previewStatus = '正在產生部署圖片...';
-    renderPreviewOnly();
+    render();
     try {
       const result = await api(`/stories/${story.id}/publish-assets`, {
         method: 'POST'
@@ -991,13 +991,14 @@
         ? `成功：${result.published.successCount} / ${result.published.nodeCount}\n${nodeMessages}`
         : `成功：${result.published.successCount} / ${result.published.nodeCount}\n失敗：${result.published.failedCount}\n${nodeMessages}`;
       state.lastActionResult = result.published.ok ? 'saved' : 'error';
-      renderPreviewOnly();
+      render();
     } catch (error) {
       state.previewStatus = `產生部署圖片失敗：${error.message}`;
       state.lastActionResult = 'error';
-      renderPreviewOnly();
+      render();
     } finally {
       setPendingAction('');
+      render();
     }
   }
 
