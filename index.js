@@ -14,6 +14,7 @@ const config = {
 };
 const port = process.env.PORT || 3001;
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://lineat-bot.onrender.com';
+const fastAckEnabled = process.env.LINE_FAST_ACK === '1';
 
 if (!config.channelAccessToken || !config.channelSecret) {
   console.error('Missing LINE_CHANNEL_ACCESS_TOKEN or LINE_CHANNEL_SECRET in .env');
@@ -296,6 +297,27 @@ function getDeliveryTargetId(event) {
 }
 
 async function replyThenPush(event, runtimeTask, meta = {}) {
+  if (!fastAckEnabled) {
+    const runtimeStart = startTimer();
+    const result = await runtimeTask();
+    const runtimeMs = elapsedMs(runtimeStart);
+    const replyStart = startTimer();
+    const response = await client.replyMessage(event.replyToken, sanitizeMessages(result.messages));
+    const replyMs = elapsedMs(replyStart);
+    logPerf({
+      ...meta,
+      cacheHit: result?.cacheHit,
+      mode: result?.mode || meta.mode,
+      messageCount: result?.messages?.length || 0,
+      replyMs,
+      runtimeMs,
+      pushMs: 0,
+      totalMs: runtimeMs + replyMs,
+      requestId: response?.headers?.['x-line-request-id'] || response?.headers?.get?.('x-line-request-id') || ''
+    });
+    return response;
+  }
+
   const t0 = startTimer();
   const deliveryTargetId = getDeliveryTargetId(event);
   const replyResponse = await client.replyMessage(event.replyToken, {
