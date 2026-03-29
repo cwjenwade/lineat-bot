@@ -225,9 +225,10 @@ async function buildStoryMenuMessages() {
             style: 'primary',
             color: '#C8833D',
             action: {
-              type: 'message',
+              type: 'postback',
               label: '開始閱讀',
-              text: triggerKeyword
+              data: triggerKeyword,
+              displayText: triggerKeyword
             }
           }
         ]
@@ -379,7 +380,9 @@ async function replyThenPush(event, runtimeTask, meta = {}) {
 
 async function handleTextEvent(event) {
   const sessionKey = getSessionKey(event);
-  const text = `${event.message.text || ''}`;
+  const text = event.type === 'postback'
+    ? `${event.postback?.data || ''}`
+    : `${event.message?.text || ''}`;
   if (text.trim() === '顯示繪本故事') {
     return replyThenPush(event, async () => {
       const menu = await buildStoryMenuMessages();
@@ -407,6 +410,9 @@ async function handleTextEvent(event) {
 }
 
 function handleEvent(event) {
+  if (event.type === 'postback') {
+    return handleTextEvent(event);
+  }
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
