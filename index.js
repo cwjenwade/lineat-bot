@@ -4,7 +4,7 @@ const express = require('express');
 const line = require('@line/bot-sdk');
 const path = require('path');
 
-const { recordAction, getStoreSnapshot } = require('./lib/storyAuthoringStore');
+const { recordAction, getHotStoreSnapshot } = require('./lib/storyAuthoringStore');
 const { createStoryRuntime } = require('./lib/storyRuntime');
 const { buildRenderResult } = require('./lib/lineatRenderer');
 
@@ -27,16 +27,17 @@ const storyRuntime = createStoryRuntime({
   publicBaseUrl,
   requirePublishedAssets: true,
   usePublishedAssets: true,
-  getStore: () => getStoreSnapshot(),
+  getStore: () => getHotStoreSnapshot(),
   onRecord: (...args) => setImmediate(() => {
     try {
       recordAction(...args);
     } catch (error) {
-      console.error('recordAction async error:', error);
+      console.error('[ERROR]', error);
     }
   })
 });
-const storyMenuCache = new WeakMap();
+let storyMenuCache = null;
+let storyMenuUpdatedAt = 0;
 
 app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
@@ -124,10 +125,14 @@ function elapsedMs(start) {
 }
 
 async function buildStoryMenuMessages() {
-  const store = getStoreSnapshot();
-  if (storyMenuCache.has(store)) {
+  const store = getHotStoreSnapshot();
+  if (
+    storyMenuCache &&
+    storyMenuCache.store === store &&
+    Date.now() - storyMenuUpdatedAt < 10000
+  ) {
     return {
-      messages: storyMenuCache.get(store),
+      messages: storyMenuCache.messages,
       cacheHit: true
     };
   }
@@ -144,7 +149,11 @@ async function buildStoryMenuMessages() {
       type: 'text',
       text: '目前還沒有可閱讀的故事。'
     }];
-    storyMenuCache.set(store, empty);
+    storyMenuCache = {
+      store,
+      messages: empty
+    };
+    storyMenuUpdatedAt = Date.now();
     return {
       messages: empty,
       cacheHit: false
@@ -160,7 +169,7 @@ async function buildStoryMenuMessages() {
       });
       imageUrl = render.images?.[0]?.url || render.image?.url || render.models?.[0]?.renderedImageUrl || '';
     } catch (error) {
-      console.warn(`[story-menu] failed to build cover for ${story.id}: ${error.message}`);
+      console.error('[ERROR]', error);
     }
 
     const bodyContents = [
@@ -233,82 +242,153 @@ async function buildStoryMenuMessages() {
       contents: bubbles
     }
   }];
-  storyMenuCache.set(store, messages);
+  storyMenuCache = {
+    store,
+    messages
+  };
+  storyMenuUpdatedAt = Date.now();
   return {
     messages,
     cacheHit: false
   };
 }
 
-function logWebhookTiming(meta = {}) {
-  const line = [
-    '[webhook-timing]',
-    `kind=${meta.kind || 'story'}`,
-    meta.text ? `text=${JSON.stringify(meta.text)}` : '',
-    meta.sessionKey ? `session=${meta.sessionKey}` : '',
-    Number.isFinite(meta.buildMs) ? `buildMs=${meta.buildMs.toFixed(1)}` : '',
-    Number.isFinite(meta.replyMs) ? `replyMs=${meta.replyMs.toFixed(1)}` : '',
-    Number.isFinite(meta.totalMs) ? `totalMs=${meta.totalMs.toFixed(1)}` : '',
-    Number.isFinite(meta.messageCount) ? `messages=${meta.messageCount}` : '',
-    typeof meta.cacheHit === 'boolean' ? `cache=${meta.cacheHit ? 'hit' : 'miss'}` : '',
-    meta.mode ? `mode=${meta.mode}` : '',
-    meta.requestId ? `requestId=${meta.requestId}` : ''
-  ].filter(Boolean).join(' ');
-  console.log(line);
+function sanitizePayload(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => sanitizePayload(entry))
+      .filter((entry) => entry !== undefined);
+  }
+  if (!value || typeof value !== 'object') return value;
+  const next = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === undefined || entry === null) continue;
+    if (key === 'debug' || key === 'metadata') continue;
+    const sanitized = sanitizePayload(entry);
+    if (sanitized === undefined) continue;
+    next[key] = sanitized;
+  }
+  return next;
+}
+
+function sanitizeMessages(messages = []) {
+  return sanitizePayload(messages);
+}
+
+function logPerf(meta = {}) {
+  console.log('[PERF]', {
+    kind: meta.kind || 'story',
+    text: meta.text || '',
+    session: meta.sessionKey || '',
+    mode: meta.mode || '',
+    messages: meta.messageCount || 0,
+    cache: typeof meta.cacheHit === 'boolean' ? (meta.cacheHit ? 'hit' : 'miss') : '',
+    reply: Number.isFinite(meta.replyMs) ? Number(meta.replyMs.toFixed(1)) : undefined,
+    runtime: Number.isFinite(meta.runtimeMs) ? Number(meta.runtimeMs.toFixed(1)) : undefined,
+    push: Number.isFinite(meta.pushMs) ? Number(meta.pushMs.toFixed(1)) : undefined,
+    total: Number.isFinite(meta.totalMs) ? Number(meta.totalMs.toFixed(1)) : undefined,
+    requestId: meta.requestId || ''
+  });
+}
+
+function getDeliveryTargetId(event) {
+  return event.source?.userId || event.source?.groupId || event.source?.roomId || '';
+}
+
+async function replyThenPush(event, runtimeTask, meta = {}) {
+  const t0 = startTimer();
+  const deliveryTargetId = getDeliveryTargetId(event);
+  const replyResponse = await client.replyMessage(event.replyToken, {
+    type: 'text',
+    text: '...'
+  });
+  const replyMs = elapsedMs(t0);
+
+  setImmediate(async () => {
+    const runtimeStart = startTimer();
+    try {
+      const result = await runtimeTask();
+      const runtimeMs = elapsedMs(runtimeStart);
+      if (!deliveryTargetId || !result?.messages?.length) {
+        logPerf({
+          ...meta,
+          cacheHit: result?.cacheHit,
+          mode: result?.mode || meta.mode,
+          messageCount: result?.messages?.length || 0,
+          replyMs,
+          runtimeMs,
+          pushMs: 0,
+          totalMs: replyMs + runtimeMs,
+          requestId: replyResponse?.headers?.['x-line-request-id'] || replyResponse?.headers?.get?.('x-line-request-id') || ''
+        });
+        return;
+      }
+      const pushStart = startTimer();
+      await client.pushMessage(deliveryTargetId, sanitizeMessages(result.messages));
+      const pushMs = elapsedMs(pushStart);
+      logPerf({
+        ...meta,
+        cacheHit: result?.cacheHit,
+        mode: result?.mode || meta.mode,
+        messageCount: result?.messages?.length || 0,
+        replyMs,
+        runtimeMs,
+        pushMs,
+        totalMs: replyMs + runtimeMs + pushMs,
+        requestId: replyResponse?.headers?.['x-line-request-id'] || replyResponse?.headers?.get?.('x-line-request-id') || ''
+      });
+    } catch (error) {
+      console.error('[ERROR]', error);
+      if (deliveryTargetId) {
+        try {
+          await client.pushMessage(deliveryTargetId, {
+            type: 'text',
+            text: '系統忙碌中'
+          });
+        } catch (pushError) {
+          console.error('[ERROR]', pushError);
+        }
+      }
+    }
+  });
+
+  return replyResponse;
 }
 
 async function handleTextEvent(event) {
   const sessionKey = getSessionKey(event);
   const text = `${event.message.text || ''}`;
-  const requestTimer = startTimer();
   if (text.trim() === '顯示繪本故事') {
-    const buildTimer = startTimer();
-    const menu = await buildStoryMenuMessages();
-    const buildMs = elapsedMs(buildTimer);
-    const replyTimer = startTimer();
-    const response = await client.replyMessage(event.replyToken, menu.messages);
-    logWebhookTiming({
+    return replyThenPush(event, async () => {
+      const menu = await buildStoryMenuMessages();
+      return {
+        mode: 'story-menu',
+        messages: menu.messages,
+        cacheHit: menu.cacheHit
+      };
+    }, {
       kind: 'story-menu',
       text,
       sessionKey,
-      buildMs,
-      replyMs: elapsedMs(replyTimer),
-      totalMs: elapsedMs(requestTimer),
-      messageCount: menu.messages.length,
-      cacheHit: menu.cacheHit,
-      requestId: response?.headers?.['x-line-request-id'] || response?.headers?.get?.('x-line-request-id') || ''
+      cacheHit: undefined
     });
-    return response;
   }
-  const runtimeTimer = startTimer();
-  const result = await storyRuntime.processTextInput(text, sessionKey, {
+  return replyThenPush(event, () => storyRuntime.processTextInput({
+    userId: sessionKey,
+    text,
     source: 'webhook'
-  });
-  const buildMs = elapsedMs(runtimeTimer);
-  const replyTimer = startTimer();
-  const response = await client.replyMessage(event.replyToken, result.messages);
-  logWebhookTiming({
+  }), {
     kind: 'story-runtime',
     text,
-    sessionKey,
-    mode: result.mode || '',
-    buildMs,
-    replyMs: elapsedMs(replyTimer),
-    totalMs: elapsedMs(requestTimer),
-    messageCount: result.messages?.length || 0,
-    requestId: response?.headers?.['x-line-request-id'] || response?.headers?.get?.('x-line-request-id') || ''
+    sessionKey
   });
-  return response;
 }
 
 function handleEvent(event) {
-  console.log('WEBHOOK EVENT:', JSON.stringify(event, null, 2));
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
   return handleTextEvent(event);
 }
 
-app.listen(port, () => {
-  console.log(`running on ${port}`);
-});
+app.listen(port);
