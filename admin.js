@@ -1,7 +1,7 @@
 const { fork } = require('child_process');
 const path = require('path');
 
-const startupTimeoutMs = Number(process.env.ADMIN_STARTUP_TIMEOUT_MS) || 5000;
+const startupTimeoutMs = Number(process.env.ADMIN_STARTUP_TIMEOUT_MS) || 15000;
 const childPath = path.join(__dirname, 'admin-child.js');
 
 const child = fork(childPath, {
@@ -30,6 +30,12 @@ child.on('message', (msg) => {
   if (msg && msg.type === 'error') {
     console.error('Child reported error during startup:\n', msg.error);
   }
+});
+
+child.on('error', (error) => {
+  clearTimeout(timeout);
+  console.error('Admin child process error:\n', error && error.stack ? error.stack : String(error));
+  process.exit(1);
 });
 
 child.on('exit', (code, signal) => {

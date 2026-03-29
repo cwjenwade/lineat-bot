@@ -13,6 +13,14 @@ try {
     console.log(`admin running on ${port}`);
   });
 
+  server.on('error', (error) => {
+    if (process.send) {
+      process.send({ type: 'error', error: error && error.stack ? error.stack : String(error) });
+    }
+    console.error(error);
+    process.exit(1);
+  });
+
   process.on('SIGINT', () => {
     try { server.close(() => process.exit(0)); } catch (_) { process.exit(0); }
   });

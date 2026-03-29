@@ -22,7 +22,7 @@
     justDraggedNodeId: '',
     currentVirtualTransitionId: '',
     currentKeywordBindingId: '',
-    settingStatus: '編輯 account trigger routes。',
+    settingStatus: '這裡編輯的是全帳號共用 trigger route。',
     graphLayoutOverrides: {}
   };
 
@@ -1612,7 +1612,9 @@
     if (dom.validateNode) dom.validateNode.title = currentBlocker || '檢查目前節點';
     if (dom.simulateMessage) dom.simulateMessage.title = '用目前文字跑 runtime';
     if (dom.simulateReset) dom.simulateReset.title = '清空模擬 session';
-    if (dom.publishScopeHint) dom.publishScopeHint.textContent = 'Save story -> Generate images -> Deploy Render';
+    if (dom.publishScopeHint) {
+      dom.publishScopeHint.textContent = '先儲存故事，再產生部署圖片，最後發布到 Render，LINE 才會拿到正式版本。';
+    }
     if (dom.heroStatus) {
       dom.heroStatus.textContent = state.previewStatus || '尚未載入節點。';
     }
