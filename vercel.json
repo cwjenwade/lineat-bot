@@ -3,6 +3,10 @@
   "public": true,
   "rewrites": [
     {
+      "source": "/",
+      "destination": "/index.html"
+    },
+    {
       "source": "/webhook",
       "destination": "/api/webhook"
     },
@@ -12,15 +16,15 @@
     },
     {
       "source": "/admin/:path*",
-      "destination": "/api/admin/:path*"
+      "destination": "/api/admin?path=:path*"
     },
     {
       "source": "/admin-api",
-      "destination": "/api/admin/api"
+      "destination": "/api/admin?path=api"
     },
     {
       "source": "/admin-api/:path*",
-      "destination": "/api/admin/api/:path*"
+      "destination": "/api/admin?path=api/:path*"
     },
     {
       "source": "/story",

@@ -73,12 +73,7 @@ app.use('/admin-api', (req, res) => {
 });
 
 app.get('/', (_req, res) => {
-  res.json({
-    ok: true,
-    name: 'lineat',
-    admin: 'http://localhost:3002/',
-    health: '/health'
-  });
+  res.type('html').sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.get('/health', (_req, res) => {

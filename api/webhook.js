@@ -40,12 +40,23 @@ async function handleLineEvent(event) {
     ? `${event.postback?.data || ''}`
     : `${event.message?.text || ''}`;
 
-  const result = await storyRuntime.processTextInput({
-    userId: sessionKey,
-    sessionKey,
-    text,
-    source: 'webhook'
-  });
+  let result;
+  try {
+    result = await storyRuntime.processTextInput({
+      userId: sessionKey,
+      sessionKey,
+      text,
+      source: 'webhook'
+    });
+  } catch (error) {
+    console.error('[runtime.processTextInput]', error);
+    if (!event.replyToken) return null;
+    const storyEntryUrl = `${publicBaseUrl.replace(/\/$/, '')}/story`;
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: `目前可以先從數位繪本入口開始閱讀：\n${storyEntryUrl}`
+    });
+  }
 
   if (!result?.messages?.length) {
     return null;

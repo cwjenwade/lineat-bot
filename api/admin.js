@@ -1,17 +1,23 @@
 const { createAdminApp } = require('../lib/adminMount');
 
 const adminApp = createAdminApp();
-const ROOT_PREFIXES = ['/api/admin', '/admin'];
 
 function normalizeUrl(req) {
-  const originalUrl = `${req.url || '/'}`;
-  for (const prefix of ROOT_PREFIXES) {
-    if (originalUrl === prefix) return '/';
-    if (originalUrl.startsWith(`${prefix}/`)) {
-      return originalUrl.slice(prefix.length) || '/';
+  const requestUrl = new URL(req.url || '/', 'http://localhost');
+  const queryPath = requestUrl.searchParams.get('path');
+  if (queryPath) {
+    return `/${queryPath.replace(/^\/+/, '')}`;
+  }
+
+  const pathname = requestUrl.pathname || '/';
+  for (const prefix of ['/api/admin', '/admin']) {
+    if (pathname === prefix) return '/';
+    if (pathname.startsWith(`${prefix}/`)) {
+      return pathname.slice(prefix.length) || '/';
     }
   }
-  return originalUrl;
+
+  return pathname;
 }
 
 module.exports = function adminHandler(req, res) {
