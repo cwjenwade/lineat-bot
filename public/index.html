@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Lineat｜數位繪本入口</title>
+  <meta name="description" content="LINE 導流到 Vercel 上的互動數位繪本。" />
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #09111f;
+      --panel: rgba(13, 20, 36, 0.84);
+      --line: rgba(125, 211, 252, 0.22);
+      --text: #f8fafc;
+      --muted: rgba(248, 250, 252, 0.72);
+      --accent: #38bdf8;
+    }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(56, 189, 248, 0.18), transparent 42%),
+        linear-gradient(180deg, #08101d, #0d1321 55%, #050816 100%);
+      color: var(--text);
+    }
+    .wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .card {
+      width: min(920px, 100%);
+      padding: 32px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: var(--panel);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+    }
+    .eyebrow {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 16px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(56, 189, 248, 0.12);
+      color: #dff6ff;
+      font-size: 13px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    h1 { margin: 0 0 14px; font-size: clamp(34px, 6vw, 60px); line-height: 1.05; }
+    p { margin: 0 0 18px; color: var(--muted); line-height: 1.8; font-size: 16px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+    a.btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 14px 18px;
+      border-radius: 14px;
+      border: 1px solid rgba(125, 211, 252, 0.28);
+      text-decoration: none;
+      font-weight: 700;
+      color: var(--text);
+      background: linear-gradient(180deg, rgba(56, 189, 248, 0.24), rgba(14, 165, 233, 0.14));
+    }
+    a.btn.secondary { background: rgba(255, 255, 255, 0.04); }
+    .meta { margin-top: 22px; display: grid; gap: 10px; color: var(--muted); font-size: 14px; }
+    code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.06);
+    }
+    @media (max-width: 640px) {
+      .card { padding: 24px 18px; border-radius: 22px; }
+      .actions { flex-direction: column; }
+      a.btn { width: 100%; box-sizing: border-box; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <div class="eyebrow">LINE 導流 · Vercel 入口</div>
+      <h1>把 LINE 變成入口，把繪本放到 Vercel。</h1>
+      <p>
+        這裡是新的正式閱讀入口。作者端留在 Node 工具鏈，負責產製故事與圖片；
+        讀者端則由 Vercel 承載靜態互動繪本，LINE 只負責把人導進來。
+      </p>
+      <div class="actions">
+        <a class="btn" href="/story?storyId=example">看示範繪本</a>
+        <a class="btn secondary" href="/story/example">直接進入故事路由</a>
+      </div>
+      <div class="meta">
+        <div>預設故事：<code>example</code></div>
+        <div>正式路由：<code>/story/:storyId</code></div>
+        <div>故事內容位置：<code>/public/stories/&lt;story-id&gt;/story.json</code></div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

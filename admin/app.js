@@ -861,13 +861,13 @@
     const story = currentStory();
     if (!story) return;
     const ok = window.confirm(`要刪除故事「${story.title}」嗎？這個操作會直接移除整個故事。`);
-    if (!ok) return;
+      state.previewStatus = '尚有對話卡缺少主講角色，已禁止發布到 Vercel。';
     const payload = await api(`/stories/${story.id}`, {
       method: 'DELETE'
     });
     state.currentStoryId = payload.nextStoryId || '';
     state.currentNodeId = '';
-    await reloadAll();
+    state.previewStatus = '正在準備 Vercel 發佈資料...';
     if (payload.nextStoryId) {
       await loadStory(payload.nextStoryId);
     }
@@ -875,11 +875,11 @@
     render();
   }
 
-  function updateStoryField(field, value) {
+      state.previewStatus = `已更新部署資料，commit ${result.deployment.head.slice(0, 7)}。請將靜態輸出同步到 Vercel。`;
     if (!currentStory()) return;
     state.storyDetail.story[field] = value;
     if (field === 'startNodeId') {
-      const binding = currentTriggerBinding();
+      state.previewStatus = `更新部署資料失敗：${error.message}`;
       if (binding) {
         binding.startNodeId = value;
       }
@@ -1200,13 +1200,13 @@
     const story = currentStory();
     if (!story) return;
     if (currentDialogueBlockers(story).length) {
-      state.previewStatus = '尚有對話卡缺少主講角色，已禁止發布到 Render。';
+      state.previewStatus = '尚有對話卡缺少主講角色，已禁止發布到 Vercel。';
       state.lastActionResult = 'blocked';
       renderPreviewOnly();
       return;
     }
     setPendingAction('deploy-render');
-    state.previewStatus = '正在發布到 Render...';
+    state.previewStatus = '正在準備 Vercel 發佈資料...';
     render();
     try {
       await handleSaveStory();
@@ -1214,11 +1214,11 @@
         method: 'POST',
         body: JSON.stringify({})
       });
-      state.previewStatus = `已發布到 Render，commit ${result.deployment.head.slice(0, 7)}。Render 會自動重新部署。`;
+      state.previewStatus = `已更新部署資料，commit ${result.deployment.head.slice(0, 7)}。請將靜態輸出同步到 Vercel。`;
       state.lastActionResult = 'saved';
       render();
     } catch (error) {
-      state.previewStatus = `發布到 Render 失敗：${error.message}`;
+      state.previewStatus = `更新部署資料失敗：${error.message}`;
       state.lastActionResult = 'error';
       renderPreviewOnly();
     } finally {
@@ -1596,7 +1596,7 @@
     if (dom.simulateReset) dom.simulateReset.disabled = state.pendingAction === 'simulate-reset';
     if (dom.saveStory) dom.saveStory.textContent = state.pendingAction === 'save' ? '儲存中...' : '儲存故事';
     if (dom.publishAssets) dom.publishAssets.textContent = state.pendingAction === 'publish-assets' ? '產圖中...' : '產生部署圖片';
-    if (dom.deployRender) dom.deployRender.textContent = state.pendingAction === 'deploy-render' ? '發布中...' : '發布到 Render';
+    if (dom.deployRender) dom.deployRender.textContent = state.pendingAction === 'deploy-render' ? '發布中...' : '更新部署資料';
     if (dom.heroApproval) dom.heroApproval.textContent = state.pendingAction === 'publish-assets' ? 'Approval...' : 'Approval';
     if (dom.heroRender) dom.heroRender.textContent = state.pendingAction === 'deploy-render' ? 'Render...' : 'Render';
     if (dom.validateStory) dom.validateStory.textContent = state.pendingAction === 'validate-story' ? '檢查中...' : '檢查故事';
@@ -1613,7 +1613,7 @@
     if (dom.simulateMessage) dom.simulateMessage.title = '用目前文字跑 runtime';
     if (dom.simulateReset) dom.simulateReset.title = '清空模擬 session';
     if (dom.publishScopeHint) {
-      dom.publishScopeHint.textContent = '先儲存故事，再產生部署圖片，最後發布到 Render，LINE 才會拿到正式版本。';
+      dom.publishScopeHint.textContent = '先儲存故事，再產生部署圖片，最後同步到 Vercel，LINE 才會拿到正式版本。';
     }
     if (dom.heroStatus) {
       dom.heroStatus.textContent = state.previewStatus || '尚未載入節點。';

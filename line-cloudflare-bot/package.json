@@ -1,0 +1,17 @@
+{
+  "name": "line-cloudflare-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --check src/index.js && node --check src/storyMap.js && node --check src/utils.js && bash -n scripts/upload-to-r2.sh"
+  },
+  "description": "全新 Cloudflare Workers 專案，用來正式取代原先 Render 上的 LINE webhook 後端。",
+  "main": "index.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "wrangler": "^4.81.0"
+  }
+}

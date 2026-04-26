@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "public": true,
+  "rewrites": [
+    {
+      "source": "/webhook",
+      "destination": "/api/webhook"
+    },
+    {
+      "source": "/admin",
+      "destination": "/api/admin"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "/api/admin/:path*"
+    },
+    {
+      "source": "/admin-api",
+      "destination": "/api/admin/api"
+    },
+    {
+      "source": "/admin-api/:path*",
+      "destination": "/api/admin/api/:path*"
+    },
+    {
+      "source": "/story",
+      "destination": "/story/index.html"
+    },
+    {
+      "source": "/story/:storyId",
+      "destination": "/story/index.html?storyId=:storyId"
+    },
+    {
+      "source": "/story/:storyId/:path*",
+      "destination": "/story/index.html?storyId=:storyId"
+    }
+  ]
+}

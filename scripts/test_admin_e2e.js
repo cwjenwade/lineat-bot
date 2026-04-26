@@ -104,7 +104,7 @@ async function run() {
     }
 
     const publishHint = await page.locator('#publish-scope-hint').textContent();
-    if (!publishHint.includes('發布到 Render')) {
+    if (!publishHint.includes('Vercel')) {
       throw new Error('Publish scope hint missing');
     }
 

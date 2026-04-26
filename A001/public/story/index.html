@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>互動繪本 — 範例</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main id="app" class="story-app">
+    <section id="stage" class="story-stage" aria-label="故事畫面">
+      <div id="background" class="story-background"></div>
+      <div id="heroImage" class="story-hero-image"></div>
+      <div id="sceneMeta" class="story-scene-meta"></div>
+    </section>
+
+    <section class="story-dock" aria-label="對話區">
+      <div class="story-dock__panel">
+        <div id="speaker" class="story-speaker"></div>
+        <div id="dialog" class="story-dialog"></div>
+        <div id="options" class="story-options"></div>
+        <div id="controls" class="story-controls"></div>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

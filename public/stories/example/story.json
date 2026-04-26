@@ -1,0 +1,41 @@
+{
+  "id": "example",
+  "title": "範例繪本：小熊冒險",
+  "start": "n1",
+  "nodes": [
+    {
+      "id": "n1",
+      "speaker": "旁白",
+      "text": "小熊醒來，發現前方有兩條路。",
+      "background": "images/bg-forest.svg",
+      "image": "images/hero.svg",
+      "options": [
+        { "label": "走左邊", "target": "n2" },
+        { "label": "走右邊", "target": "n3" }
+      ]
+    },
+    {
+      "id": "n2",
+      "speaker": "熊熊",
+      "text": "左邊有一片花田，我好喜歡！",
+      "background": "images/bg-forest.svg",
+      "image": "images/left.svg",
+      "next": "n4"
+    },
+    {
+      "id": "n3",
+      "speaker": "熊熊",
+      "text": "右邊是一片樹林，感覺有點神秘。",
+      "background": "images/bg-forest.svg",
+      "image": "images/right.svg",
+      "next": "n4"
+    },
+    {
+      "id": "n4",
+      "speaker": "旁白",
+      "text": "天色漸晚，小熊決定回家。",
+      "background": "images/bg-sunset.svg",
+      "image": "images/hero.svg"
+    }
+  ]
+}

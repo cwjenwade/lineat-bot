@@ -1339,7 +1339,7 @@
             <div class="hero-kicker">Line OA Control Center</div>
             <h1 class="hero-title">Ho-Se Ong Lai</h1>
           </div>
-          <div class="hero-subtitle">Setting / Story / Approval / Render</div>
+          <div class="hero-subtitle">Setting / Story / Approval / Publish</div>
         </div>
         <div class="hero-actions">
           <section class="hero-action">
@@ -1366,13 +1366,16 @@
           <section class="hero-action">
             <div>
               <div class="hero-action-label">Deploy</div>
-              <div class="hero-action-title">Render</div>
+              <div class="hero-action-title">Publish</div>
             </div>
-            <button class="button warn" id="hero-render">Render</button>
+            <button class="button warn" id="hero-render">Publish</button>
           </section>
         </div>
       </section>
       <div class="hero-status" id="hero-status">尚未載入節點。</div>
+      <div class="hero-note" style="margin-top:10px;font-size:13px;line-height:1.6;color:#6c6259;">
+        目前此後台僅供測試與預覽；請不要把上傳、產圖、清理與部署結果視為正式永久儲存。
+      </div>
     </section>
 
     <section class="page stories-grid active" id="page-stories" data-page-tab="story">
@@ -1411,7 +1414,7 @@
               <div class="actions">
                 <button class="button secondary" id="save-story">儲存故事</button>
                 <button class="button secondary" id="publish-assets">產生部署圖片</button>
-                <button class="button warn" id="deploy-render">發布到 Render</button>
+                <button class="button warn" id="deploy-render">更新部署資料</button>
               </div>
             </div>
           </section>
@@ -1445,7 +1448,7 @@
                 </div>
               </div>
               <div class="progress-grid" id="story-progress-grid"></div>
-              <div class="scope-hint" id="publish-scope-hint">先儲存故事，再產生部署圖片，最後發布到 Render，LINE 才會拿到正式版本。</div>
+              <div class="scope-hint" id="publish-scope-hint">先儲存故事，再產生部署圖片，最後同步到 Vercel，LINE 才會拿到正式版本。</div>
               <div class="progress-grid" id="story-publish-summary"></div>
             </section>
 
@@ -1593,6 +1596,31 @@
                   </div>
                   <div class="preview-output-meta" id="preview-output-meta">目前尚未產生輸出圖。</div>
                   <div class="preview-scroller" id="scene-preview"></div>
+                  <div class="stage-tabs" style="margin-top:16px;">
+                    <button class="stage-tab active" data-preview-panel="payload">Payload</button>
+                    <button class="stage-tab" data-preview-panel="simulate">Simulate</button>
+                  </div>
+                  <section class="preview-panel active" id="preview-panel-payload">
+                    <div class="subtle" style="margin-bottom:8px;">目前節點 payload 預覽</div>
+                    <pre class="simulation-output" id="payload-preview">{}</pre>
+                  </section>
+                  <section class="preview-panel" id="preview-panel-simulate">
+                    <div class="field-grid">
+                      <div class="field">
+                        <label>模擬文字</label>
+                        <input id="simulate-text" placeholder="輸入 trigger 或一般訊息" />
+                      </div>
+                      <div class="field">
+                        <label>Session Key</label>
+                        <input id="simulate-session-key" value="local-preview" />
+                      </div>
+                    </div>
+                    <div class="actions" style="margin:12px 0;">
+                      <button class="button secondary" id="simulate-message">送出文字事件</button>
+                      <button class="button ghost" id="simulate-reset">重置 session</button>
+                    </div>
+                    <pre class="simulation-output" id="simulation-output">尚未執行模擬事件。</pre>
+                  </section>
                 </div>
 
                 <div class="editor-form-column">

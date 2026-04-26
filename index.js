@@ -13,7 +13,7 @@ const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 const port = process.env.PORT || 3001;
-const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://lineat-bot.onrender.com';
+const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://debbylinehose.vercel.app';
 const fastAckEnabled = process.env.LINE_FAST_ACK === '1';
 
 if (!config.channelAccessToken || !config.channelSecret) {

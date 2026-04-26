@@ -1,0 +1,7 @@
+name = "line-cloudflare-bot"
+main = "src/index.js"
+compatibility_date = "2026-04-08"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "story-images"

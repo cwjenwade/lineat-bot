@@ -3,7 +3,7 @@ require('dotenv').config();
 const { storyNodes } = require('../storyData');
 
 const token = process.env.LINE_CHANNEL_ACCESS_TOKEN;
-const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://lineat-bot.onrender.com';
+const publicBaseUrl = process.env.PUBLIC_BASE_URL || 'https://debbylinehose.vercel.app';
 
 function getRoleIconPath(title) {
   if (title.includes('熊熊的內心')) return '/public/story/01/roles/inner-bear.png';
