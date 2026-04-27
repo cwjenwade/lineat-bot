@@ -3,6 +3,7 @@ const line = require('@line/bot-sdk');
 const { createStoryRuntime } = require('../lib/storyRuntime');
 const { resolveKeywordBindingAction } = require('../lib/storyKeywordActions');
 const { recordAction, getHotStoreSnapshot } = require('../lib/storyAuthoringStore');
+const { parseStoryPostbackData } = require('../lib/lineNodeRenderer');
 
 require('dotenv').config();
 
@@ -39,6 +40,7 @@ async function handleLineEvent(event) {
   const text = event.type === 'postback'
     ? `${event.postback?.data || ''}`
     : `${event.message?.text || ''}`;
+  const postback = event.type === 'postback' ? parseStoryPostbackData(text) : {};
 
   let result;
   try {
@@ -46,6 +48,13 @@ async function handleLineEvent(event) {
       userId: sessionKey,
       sessionKey,
       text,
+      action: postback.action || '',
+      storyId: postback.storyId || '',
+      fromNodeId: postback.fromNodeId || postback.nodeId || '',
+      nodeId: postback.nodeId || '',
+      choice: postback.choice || '',
+      nextNodeId: postback.nextNodeId || '',
+      postbackData: text,
       source: 'webhook'
     });
   } catch (error) {

@@ -7,6 +7,7 @@ const path = require('path');
 const { recordAction, getHotStoreSnapshot } = require('./lib/storyAuthoringStore');
 const { createStoryRuntime } = require('./lib/storyRuntime');
 const { resolveKeywordBindingAction } = require('./lib/storyKeywordActions');
+const { parseStoryPostbackData } = require('./lib/lineNodeRenderer');
 
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -247,9 +248,19 @@ async function handleTextEvent(event) {
   const text = event.type === 'postback'
     ? `${event.postback?.data || ''}`
     : `${event.message?.text || ''}`;
+  const postback = event.type === 'postback' ? parseStoryPostbackData(text) : {};
+  
   return replyThenPush(event, () => storyRuntime.processTextInput({
     userId: sessionKey,
+    sessionKey,
     text,
+    action: postback.action || '',
+    storyId: postback.storyId || '',
+    fromNodeId: postback.fromNodeId || postback.nodeId || '',
+    nodeId: postback.nodeId || '',
+    choice: postback.choice || '',
+    nextNodeId: postback.nextNodeId || '',
+    postbackData: text,
     source: 'webhook'
   }), {
     kind: 'story-runtime',

@@ -861,7 +861,7 @@
     const story = currentStory();
     if (!story) return;
     const ok = window.confirm(`要刪除故事「${story.title}」嗎？這個操作會直接移除整個故事。`);
-      state.previewStatus = '尚有對話卡缺少主講角色，已禁止發布到 Vercel。';
+    if (!ok) return;
     const payload = await api(`/stories/${story.id}`, {
       method: 'DELETE'
     });
@@ -875,11 +875,11 @@
     render();
   }
 
-      state.previewStatus = `已更新部署資料，commit ${result.deployment.head.slice(0, 7)}。請將靜態輸出同步到 Vercel。`;
+  function updateStoryField(field, value) {
     if (!currentStory()) return;
     state.storyDetail.story[field] = value;
     if (field === 'startNodeId') {
-      state.previewStatus = `更新部署資料失敗：${error.message}`;
+      const binding = currentTriggerBinding();
       if (binding) {
         binding.startNodeId = value;
       }
@@ -2656,6 +2656,7 @@
     );
     if (node.type !== 'transition') {
       container.append(
+        nodeImageCloudinaryEditor(node),
         createField('圖片', imageInput(node.imagePath, (value) => updateNodeField('imagePath', value))),
         createField('大圖透明度', decimalInput(node.heroImageOpacity ?? 1, 0, 1, 0.05, (value) => updateNodeField('heroImageOpacity', value))),
         createField('大圖縮放', rangeInput(node.heroImageScale ?? 1, 1, 2.5, 0.05, (value) => updateNodeField('heroImageScale', value), (value) => `${Number(value).toFixed(2)}x`))
@@ -3265,6 +3266,111 @@
     preview.src = value || '';
     urlInput.addEventListener('input', () => { preview.src = urlInput.value || ''; });
     wrap.append(urlInput, fileInput, preview);
+    return wrap;
+  }
+
+  function nodeImageCloudinaryEditor(node) {
+    const wrap = document.createElement('section');
+    wrap.className = 'panel';
+    wrap.style.padding = '14px';
+
+    const header = document.createElement('div');
+    header.className = 'row space-between';
+    header.innerHTML = '<h3 style="margin:0;">Cloudinary 圖片</h3>';
+    wrap.appendChild(header);
+
+    const grid = document.createElement('div');
+    grid.className = 'field-grid';
+
+    const urlField = createField('imageUrl', input(node.imageUrl || '', (value) => updateNodeField('imageUrl', value)));
+    urlField.style.gridColumn = '1 / -1';
+    grid.appendChild(urlField);
+
+    const fileField = document.createElement('div');
+    fileField.className = 'field';
+    fileField.style.gridColumn = '1 / -1';
+    const fileLabel = document.createElement('label');
+    fileLabel.textContent = '上傳本機圖片到 Cloudinary';
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/png,image/jpeg,image/webp';
+    const uploadButton = document.createElement('button');
+    uploadButton.className = 'button secondary';
+    uploadButton.textContent = '上傳並儲存';
+    const uploadHint = document.createElement('div');
+    uploadHint.className = 'subtle';
+    uploadHint.textContent = 'PNG / JPEG / WEBP，單檔上限 5MB。';
+    const uploadStatus = document.createElement('div');
+    uploadStatus.className = 'status-box';
+    uploadStatus.textContent = node.imageMeta?.provider === 'cloudinary'
+      ? `Cloudinary：${node.imageMeta.publicId || ''}`
+      : '尚未上傳到 Cloudinary。';
+    const preview = document.createElement('img');
+    preview.className = 'asset-preview';
+    preview.style.width = '100%';
+    preview.style.height = '240px';
+    preview.style.objectFit = 'cover';
+    preview.style.marginTop = '10px';
+    preview.src = node.imageUrl || node.imagePath || '';
+
+    let selectedFile = null;
+    fileInput.addEventListener('change', () => {
+      selectedFile = fileInput.files?.[0] || null;
+      uploadStatus.className = 'status-box';
+      uploadStatus.textContent = selectedFile ? `已選擇：${selectedFile.name}` : '尚未選擇檔案。';
+    });
+
+    uploadButton.addEventListener('click', async () => {
+      if (!selectedFile) {
+        uploadStatus.className = 'status-box is-error';
+        uploadStatus.textContent = '請先選擇圖片檔。';
+        return;
+      }
+      try {
+        uploadButton.disabled = true;
+        uploadStatus.className = 'status-box is-pending';
+        uploadStatus.textContent = '正在上傳到 Cloudinary...';
+        const formData = new FormData();
+        formData.append('image', selectedFile);
+        const response = await fetch(`${API_BASE}/stories/${currentStory().id}/nodes/${node.id}/upload-image`, {
+          method: 'POST',
+          headers: {
+            'x-lineat-role': state.role,
+            'x-lineat-actor': state.role
+          },
+          body: formData
+        });
+        const text = await response.text();
+        const payload = text ? JSON.parse(text) : {};
+        if (!response.ok) {
+          throw new Error(payload.error || 'Cloudinary upload failed');
+        }
+        if (payload.node) {
+          Object.assign(node, payload.node);
+        }
+        preview.src = node.imageUrl || node.imagePath || '';
+        uploadStatus.className = 'status-box is-success';
+        uploadStatus.textContent = `已上傳：${node.imageMeta?.publicId || payload.node?.imageMeta?.publicId || ''}`;
+        renderNodeEditor();
+      } catch (error) {
+        uploadStatus.className = 'status-box is-error';
+        uploadStatus.textContent = error.message || 'Cloudinary 上傳失敗';
+      } finally {
+        uploadButton.disabled = false;
+      }
+    });
+
+    fileField.append(fileLabel, fileInput, uploadButton, uploadHint, uploadStatus, preview);
+    grid.appendChild(fileField);
+
+    const metaField = createField(
+      'imageMeta',
+      staticValue(node.imageMeta?.provider ? JSON.stringify(node.imageMeta, null, 2) : '尚無 Cloudinary 中繼資料。')
+    );
+    metaField.style.gridColumn = '1 / -1';
+    grid.appendChild(metaField);
+
+    wrap.appendChild(grid);
     return wrap;
   }
 
